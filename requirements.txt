@@ -1,0 +1,3 @@
+# Live crew (Assignment #3). The offline pipeline needs none of these — only a
+# C++ compiler (g++/clang++). Install for the live/API path:
+crewai[anthropic]==1.14.6
