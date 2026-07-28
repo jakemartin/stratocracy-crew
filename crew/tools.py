@@ -12,6 +12,7 @@ The same functions back both execution paths (see run.py):
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -25,6 +26,7 @@ HEADER = "Combat.h"
 TEST = "test_combat.cpp"
 SELFPLAY = "selfplay.cpp"
 IMPL = "Combat.cpp"          # the file the Systems Engineer authors
+ACCEPT = "acceptance.json"   # the release record — ONLY the Test Engineer writes this
 
 
 # --------------------------------------------------------------------------- #
@@ -114,8 +116,40 @@ def run_test_gate_fn() -> dict:
             "failures": failures, "log": out.strip()}
 
 
+def certify_build_fn() -> dict:
+    """Test Engineer's authoritative release gate: run every invariant AND write the
+    acceptance record. This is the ONLY writer of build/acceptance.json, which the Balance
+    Analyst requires — so removing the Test Engineer halts the pipeline (no record -> no
+    balance). The Systems Engineer's own run_test_gate is dev-time self-testing; it never
+    certifies for release."""
+    r = run_test_gate_fn()
+    record = {
+        "accepted": bool(r["passed"]),
+        "tests": "T-COMBAT-01..08",
+        "failures": r.get("failures", []),
+        "summary": r["summary"],
+        "certified_by": "Test Engineer",
+    }
+    ensure_workspace()
+    (BUILD / ACCEPT).write_text(json.dumps(record, indent=2), encoding="utf-8")
+    return {**r, "accepted": record["accepted"]}
+
+
 def run_self_play_fn() -> dict:
     ensure_workspace()
+    # Hard dependency on the Test Engineer: no acceptance record -> refuse to run.
+    acc = BUILD / ACCEPT
+    if not acc.exists():
+        return {"ok": False, "log": "",
+                "summary": "REFUSED — no acceptance record. The Test Engineer must "
+                "certify the build (build/acceptance.json) before balance can run."}
+    try:
+        rec = json.loads(acc.read_text(encoding="utf-8"))
+    except Exception:
+        return {"ok": False, "summary": "REFUSED — acceptance record unreadable.", "log": ""}
+    if not rec.get("accepted"):
+        return {"ok": False, "log": "",
+                "summary": "REFUSED — build not accepted by the Test Engineer (gate failed)."}
     if not (BUILD / IMPL).exists():
         return {"ok": False, "summary": "no build/Combat.cpp to balance-test", "log": ""}
     ok, log, exe = _compile([IMPL, SELFPLAY], "selfplay_runner")
@@ -153,15 +187,25 @@ try:
         r = run_test_gate_fn()
         return f"{r['summary']}\n\n{r['log']}"
 
+    @tool("certify_build")
+    def certify_build() -> str:
+        """Run the full invariant gate (T-COMBAT-01..08) AND write the build's acceptance
+        record to build/acceptance.json. This certification is REQUIRED before self-play can
+        run — the Balance Analyst refuses without it. Certify only a fully passing build.
+        Takes no arguments."""
+        r = certify_build_fn()
+        return f"{r['summary']} | accepted={r['accepted']}\n\n{r['log']}"
+
     @tool("run_self_play")
     def run_self_play() -> str:
         """Compile build/Combat.cpp against the self-play harness and run AI-vs-AI
-        duels, returning the balance table (winners + rounds-to-kill). Only meaningful
-        after the gate passes. Takes no arguments."""
+        duels, returning the balance table (winners + rounds-to-kill). REQUIRES the Test
+        Engineer's acceptance record (build/acceptance.json); refuses without it. Takes no
+        arguments."""
         r = run_self_play_fn()
         return f"{r['summary']}\n\n{r['log']}"
 
     CREW_TOOLS_AVAILABLE = True
 except Exception:  # crewai not installed — offline path still works
     CREW_TOOLS_AVAILABLE = False
-    write_combat_impl = run_test_gate = run_self_play = None
+    write_combat_impl = run_test_gate = certify_build = run_self_play = None

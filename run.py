@@ -15,6 +15,15 @@ import os
 import sys
 from pathlib import Path
 
+# Load ANTHROPIC_API_KEY (and any other vars) from a local .env if present.
+# python-dotenv ships with crewai; the try/except keeps the offline path working
+# even if it isn't installed.
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent / ".env")
+except Exception:
+    pass
+
 BUILD = Path(__file__).resolve().parent / "build"
 BUILD.mkdir(exist_ok=True)
 LOG_PATH = BUILD / "run_log.md"
@@ -33,15 +42,35 @@ def _flush_log(header: str) -> None:
 
 def run_live() -> None:
     from crew.crew import build_crew
-    from crew.tools import run_self_play_fn
+    from crew.tools import certify_build_fn, run_self_play_fn, IMPL
     log("MODE: live CrewAI crew (Anthropic API).\n")
     crew = build_crew(verbose=True)
     result = crew.kickoff(inputs={"game": "Stratocracy"})
-    log("\n=== CREW OUTPUT ===\n" + str(result))
-    # Persist the balance table regardless of how the agent summarized it.
+
+    # The live console shows the agents' step-by-step tool calls, but the SAVED log
+    # otherwise captured only the final narrative. Re-run the gate and self-play here and
+    # write the full evidence trail — gate verdict, the agent-authored source, and the
+    # duel table — so run_log.md is complete, submittable proof on its own.
+    log("=== Test Engineer certification (for the record) ===")
+    g = certify_build_fn()
+    log("[Test Engineer] certify_build -> " + g["summary"] + f" | accepted={g['accepted']}")
+    for line in g["log"].splitlines():
+        log("    " + line)
+
+    combat = BUILD / IMPL
+    if combat.exists():
+        log("\n=== Agent-authored build/Combat.cpp ===")
+        for line in combat.read_text(encoding="utf-8").splitlines():
+            log("    " + line)
+
+    log("\n=== Self-play (Balance Analyst input) ===")
     b = run_self_play_fn()
+    for line in b["log"].splitlines():
+        log("    " + line)
     (BUILD / "balance_report.md").write_text(
         "# Balance report (self-play)\n\n```\n" + b["log"] + "\n```\n", encoding="utf-8")
+
+    log("\n=== Final crew narrative (Balance Analyst) ===\n" + str(result))
 
 
 def run_offline() -> None:
@@ -59,6 +88,7 @@ def run_offline() -> None:
 
 
 def main() -> int:
+    (BUILD / "acceptance.json").unlink(missing_ok=True)  # each run must re-earn acceptance
     args = set(sys.argv[1:])
     force_offline = "--offline" in args
     force_online = "--online" in args

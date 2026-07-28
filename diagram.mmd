@@ -1,23 +1,27 @@
 %% Stratocracy Agent Crew — roles, tools, and data flow (GDD §3 headless crew)
+%% Each agent owns a distinct artifact; removing any one breaks the chain.
 flowchart TD
     D["🎯 Director (human)<br/>spec/combat_spec.md"]
 
     subgraph CREW["CrewAI sequential crew"]
-        SE["🛠 Systems Engineer<br/>authors headless C++"]
-        TE["✅ Test Engineer<br/>compile + test gate"]
+        SE["🛠 Systems Engineer<br/>authors + self-tests C++"]
+        TE["✅ Test Engineer<br/>certifies the build"]
         BA["📊 Balance Analyst<br/>self-play + tuning"]
     end
 
     IMPL[("build/Combat.cpp")]
+    ACC[("build/acceptance.json<br/>release record")]
     REPORT[("build/balance_report.md")]
 
     D -->|"input spec (contract)"| SE
-    SE -->|"tool: write_combat_impl"| IMPL
+    SE -->|"write_combat_impl"| IMPL
+    SE -->|"run_test_gate (dev self-test)"| SELF{"8/8 pass?"}
+    SELF -->|"BLOCK — fix & re-author"| SE
+    SELF -->|"compiles + self-tested"| TE
     IMPL --> TE
-    TE -->|"tool: run_test_gate<br/>(real g++ compile + run)"| GATE{"T-COMBAT-01..08<br/>all pass?"}
-    GATE -->|"BLOCK — e.g. T-COMBAT-07<br/>hallucinated counter rule"| SE
-    GATE -->|"PASS — merge approved"| BA
-    BA -->|"tool: run_self_play"| REPORT
+    TE -->|"certify_build<br/>(real compile + run T-COMBAT-01..08)"| ACC
+    ACC -->|"required input — balance refuses without it"| BA
+    BA -->|"run_self_play"| REPORT
     REPORT -->|"tuning proposal"| D
 
     classDef human fill:#33260c,stroke:#6b4d16,color:#ffe1b0;
@@ -25,4 +29,4 @@ flowchart TD
     classDef data fill:#12301f,stroke:#1c5b3b,color:#bff0d0;
     class D human;
     class SE,TE,BA agent;
-    class IMPL,REPORT data;
+    class IMPL,ACC,REPORT data;

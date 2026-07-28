@@ -13,7 +13,7 @@ from pathlib import Path
 
 from crewai import Agent, LLM
 
-from .tools import write_combat_impl, run_test_gate, run_self_play
+from .tools import write_combat_impl, run_test_gate, certify_build, run_self_play
 
 SPEC_PATH = Path(__file__).resolve().parent.parent / "spec" / "combat_spec.md"
 
@@ -22,8 +22,9 @@ DEFAULT_MODEL = os.environ.get("STRATOCRACY_CREW_MODEL", "anthropic/claude-sonne
 
 
 def build_llm() -> LLM:
-    # max_tokens is required for Anthropic models in CrewAI.
-    return LLM(model=DEFAULT_MODEL, max_tokens=4096, temperature=0.2)
+    # max_tokens is required for Anthropic models in CrewAI. Sonnet 5 (and the
+    # 4.6+ generation) deprecate `temperature`, so it is intentionally omitted.
+    return LLM(model=DEFAULT_MODEL, max_tokens=4096)
 
 
 def read_spec() -> str:
@@ -37,34 +38,41 @@ def build_agents(llm: LLM | None = None):
         role="Systems Engineer",
         goal=(
             "Author the headless C++ combat module for Stratocracy strictly from the "
-            "Director's spec, then write it to build/Combat.cpp with the write_combat_impl "
-            "tool. If the Test Engineer reports a failing invariant, correct the code and "
-            "re-write it. Implement ONLY what the spec defines — no invented rules."
+            "Director's spec and write it with write_combat_impl. Then VERIFY YOUR OWN "
+            "WORK: call run_test_gate to compile and run the tests; if it reports a compile "
+            "error or any failing invariant, read the message, fix build/Combat.cpp, and "
+            "re-run the gate. Iterate until it reports GATE PASS (all of T-COMBAT-01..08). "
+            "Only finish once the gate passes. Implement ONLY what the spec defines."
         ),
         backstory=(
-            "A disciplined engine programmer who treats the spec as a contract. Writes "
-            "deterministic, dependency-free C++17 (no Unreal, no third-party libs) so the "
-            "rules can be tested in seconds without launching the editor."
+            "A disciplined engine programmer who treats the spec as a contract and never "
+            "hands off code that doesn't compile. Writes deterministic, dependency-free "
+            "C++17 (no Unreal, no third-party libs) and leans on the real compiler + tests "
+            "as the feedback loop, not on eyeballing."
         ),
-        tools=[write_combat_impl],
+        tools=[write_combat_impl, run_test_gate],
         llm=llm,
         allow_delegation=False,
+        max_iter=12,
         verbose=True,
     )
 
     test_engineer = Agent(
         role="Test Engineer",
         goal=(
-            "Guard correctness. Run the compile+test gate with run_test_gate. If any "
-            "invariant fails, state exactly which one and hand the failure back so the "
-            "Systems Engineer can fix it. Only report PASS when every invariant holds."
+            "Own the release gate. Call certify_build to compile and run every invariant "
+            "AND write the acceptance record (build/acceptance.json) that the Balance Analyst "
+            "requires. Certify the build only when all of T-COMBAT-01..08 pass; if any fails, "
+            "the record is marked not-accepted and the pipeline halts here — nothing runs "
+            "balance on an uncertified build."
         ),
         backstory=(
-            "Owns the merge gate. Trusts the compiler and the assertions, not prose. Knows "
-            "the classic hallucination — over-generalizing the counterattack rule and "
-            "letting Artillery counter at range 1 — and relies on T-COMBAT-07 to catch it."
+            "The sole release authority. The Systems Engineer may self-test while authoring, "
+            "but nothing ships downstream without this independent certification. Trusts the "
+            "compiler and the assertions, not prose; knows the classic hallucination (letting "
+            "Artillery counter at range 1) and relies on T-COMBAT-07 to catch it."
         ),
-        tools=[run_test_gate],
+        tools=[certify_build],
         llm=llm,
         allow_delegation=False,
         verbose=True,

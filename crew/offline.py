@@ -22,23 +22,23 @@ def run_offline(log) -> dict:
     log(tools.write_combat_impl_fn(tools.read_reference("Combat.buggy.cpp")))
     log("[Systems Engineer] pass 1 authored (counter rule = 'distance <= rangeMax').\n")
 
-    # --- Test Engineer: gate blocks pass 1 --------------------------------------
+    # --- Systems Engineer self-test: catches its own hallucination on pass 1 ----
     r1 = tools.run_test_gate_fn()
     if not r1["compiled"]:
-        log("[Test Engineer] compile FAILED — " + r1["log"])
+        log("[Systems Engineer · self-test] compile FAILED — " + r1["log"])
         log("\n[stop] No usable C++ compiler on PATH. On Windows, open the "
             "'x64 Native Tools Command Prompt for VS' (so cl.exe is on PATH) and re-run; "
             "or install g++/clang++. Nothing else is wrong — the crew just can't build.")
         return {"status": "no_compiler", "gate_passed": False, "failures_caught": []}
-    log("[Test Engineer] " + r1["summary"])
+    log("[Systems Engineer · self-test] " + r1["summary"])
     for line in r1["log"].splitlines():
         log("    " + line)
     if r1["passed"]:
         log("[note] pass 1 unexpectedly passed — the bundled 'buggy' impl should fail "
             "T-COMBAT-07; continuing anyway.\n")
     else:
-        log(f"[Test Engineer] MERGE BLOCKED — {', '.join(r1['failures'])} caught the "
-            "hallucinated counter rule. Handing back to Systems Engineer.\n")
+        log(f"[Systems Engineer · self-test] BLOCK — {', '.join(r1['failures'])} caught the "
+            "hallucinated counter rule. Fixing before hand-off.\n")
 
     # --- Systems Engineer, pass 2: corrected implementation ---------------------
     log("[Systems Engineer] re-fed invariant 7; correcting the range-band check.")
@@ -46,14 +46,19 @@ def run_offline(log) -> dict:
     log("[Systems Engineer] pass 2 authored (counter honors [rangeMin, rangeMax]).\n")
 
     r2 = tools.run_test_gate_fn()
-    log("[Test Engineer] " + r2["summary"])
+    log("[Systems Engineer · self-test] " + r2["summary"])
     for line in r2["log"].splitlines():
         log("    " + line)
     if not r2["passed"]:
-        log("[stop] pass 2 did not pass the gate — see the failures above.")
+        log("[stop] pass 2 did not pass self-test — see the failures above.")
         return {"status": "error", "gate_passed": False,
                 "failures_caught": r1.get("failures", [])}
-    log("[Test Engineer] MERGE APPROVED.\n")
+
+    # --- Test Engineer: the SOLE release authority — certifies and writes the record
+    cert = tools.certify_build_fn()
+    log("[Test Engineer] certify_build -> " + cert["summary"] + f" | accepted={cert['accepted']}")
+    log("[Test Engineer] acceptance record written to build/acceptance.json; "
+        "Balance Analyst is cleared to run.\n")
 
     # --- Balance Analyst --------------------------------------------------------
     b = tools.run_self_play_fn()

@@ -19,9 +19,13 @@ Terrain defense (defender's hex), percent: Plains 0, Town 10, Woods 20, Mountain
 
 ## Required functions
 
+All declarations live in **`namespace strat`** (see `Combat.h`). Your `Combat.cpp` must
+`#include "Combat.h"` and define the functions inside `namespace strat { ... }` (or
+fully-qualify them), operating on `strat::Unit` — not a bare global `Unit`.
+
 ```
-int  resolveDamage(const Unit& attacker, const Unit& defender, int terrainDefPct);
-bool defenderCanCounter(const Unit& defender, int distance);
+int  strat::resolveDamage(const strat::Unit& attacker, const strat::Unit& defender, int terrainDefPct);
+bool strat::defenderCanCounter(const strat::Unit& defender, int distance);
 ```
 
 ## Formula

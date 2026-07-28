@@ -15,14 +15,24 @@ and a self-play balance report — the exact "game-ready output" the GDD promise
 
 | Agent | Role (GDD §3) | Tool (its "act") | Verifiable output |
 |-------|---------------|------------------|-------------------|
-| 🛠 **Systems Engineer** | Author the headless C++ rules from the spec | `write_combat_impl` → writes `build/Combat.cpp` | Compiling C++ |
-| ✅ **Test Engineer** | Own the merge gate; block on any failing invariant | `run_test_gate` → **real `g++` compile + run** | PASS only if T-COMBAT-01..08 hold |
-| 📊 **Balance Analyst** | Self-play, then propose one tuning/methodology change | `run_self_play` → AI-vs-AI duels | Balance table + proposal |
+| 🛠 **Systems Engineer** | Author the headless C++ rules; self-test until they compile and pass | `write_combat_impl` + `run_test_gate` (dev self-test) | `build/Combat.cpp` (compiling, self-tested) |
+| ✅ **Test Engineer** | The sole release authority — certify the build and write the acceptance record | `certify_build` → **real compile + run**, then writes `build/acceptance.json` | The acceptance record (accepted only if T-COMBAT-01..08 all pass) |
+| 📊 **Balance Analyst** | Self-play, then propose one tuning/methodology change | `run_self_play` → AI-vs-AI duels (**refuses without the acceptance record**) | `build/balance_report.md` + proposal |
 
 The **Director** is the human — represented by the input spec (`spec/combat_spec.md`), not an
-agent. Handoff order is fixed and sequential: **spec → implement → gate → balance**, exactly the
+agent. Handoff order is fixed and sequential: **spec → implement → certify → balance**, exactly the
 GDD §3 workflow. Agents coordinate through a shared `build/` workspace (they are active file
 participants, not chatbots) — the file-system-integration pattern from Class 4.
+
+**No agent is removable — each owns a distinct artifact the next one needs.** The Systems
+Engineer produces `Combat.cpp`; the Test Engineer is the *only* writer of `build/acceptance.json`
+(its `certify_build` runs the invariants and signs the release); and the Balance Analyst's
+`run_self_play` **refuses to run without an accepted record**. Remove the Systems Engineer and
+there is no code; remove the Test Engineer and there is no acceptance, so balance halts; remove
+the Balance Analyst and there is no report. The Systems Engineer's own `run_test_gate` is dev-time
+self-testing — it keeps the build compiling through the sequential hand-off, but it never
+certifies for release. That separation (author self-checks; an independent role signs off) is why
+the pipeline has no redundant agent.
 
 See `diagram.mmd` for the architecture (roles, tools, data flow, the fail-loop).
 
