@@ -16,6 +16,7 @@ from crewai import Agent, LLM
 from .tools import write_combat_impl, run_test_gate, certify_build, run_self_play
 
 SPEC_PATH = Path(__file__).resolve().parent.parent / "spec" / "combat_spec.md"
+ADDENDUM_PATH = Path(__file__).resolve().parent.parent / "spec" / "combat_spec_addendum.md"
 
 # Workhorse model per GDD §4.6 (Sonnet 5). Override with STRATOCRACY_CREW_MODEL.
 DEFAULT_MODEL = os.environ.get("STRATOCRACY_CREW_MODEL", "anthropic/claude-sonnet-5")
@@ -28,7 +29,12 @@ def build_llm() -> LLM:
 
 
 def read_spec() -> str:
-    return SPEC_PATH.read_text(encoding="utf-8")
+    """The Director's contract handed to the Systems Engineer: the base combat spec
+    plus the addendum (type-effectiveness + repair), if present."""
+    spec = SPEC_PATH.read_text(encoding="utf-8")
+    if ADDENDUM_PATH.exists():
+        spec += "\n\n---\n\n" + ADDENDUM_PATH.read_text(encoding="utf-8")
+    return spec
 
 
 def build_agents(llm: LLM | None = None):
@@ -41,7 +47,7 @@ def build_agents(llm: LLM | None = None):
             "Director's spec and write it with write_combat_impl. Then VERIFY YOUR OWN "
             "WORK: call run_test_gate to compile and run the tests; if it reports a compile "
             "error or any failing invariant, read the message, fix build/Combat.cpp, and "
-            "re-run the gate. Iterate until it reports GATE PASS (all of T-COMBAT-01..08). "
+            "re-run the gate. Iterate until it reports GATE PASS (all of T-COMBAT-01..10, T-REPAIR-01..07). "
             "Only finish once the gate passes. Implement ONLY what the spec defines."
         ),
         backstory=(
@@ -62,7 +68,7 @@ def build_agents(llm: LLM | None = None):
         goal=(
             "Own the release gate. Call certify_build to compile and run every invariant "
             "AND write the acceptance record (build/acceptance.json) that the Balance Analyst "
-            "requires. Certify the build only when all of T-COMBAT-01..08 pass; if any fails, "
+            "requires. Certify the build only when all of T-COMBAT-01..10, T-REPAIR-01..07 pass; if any fails, "
             "the record is marked not-accepted and the pipeline halts here — nothing runs "
             "balance on an uncertified build."
         ),

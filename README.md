@@ -16,11 +16,11 @@ and a self-play balance report — the exact "game-ready output" the GDD promise
 | Agent | Role (GDD §3) | Tool (its "act") | Verifiable output |
 |-------|---------------|------------------|-------------------|
 | 🛠 **Systems Engineer** | Author the headless C++ rules; self-test until they compile and pass | `write_combat_impl` + `run_test_gate` (dev self-test) | `build/Combat.cpp` (compiling, self-tested) |
-| ✅ **Test Engineer** | The sole release authority — certify the build and write the acceptance record | `certify_build` → **real compile + run**, then writes `build/acceptance.json` | The acceptance record (accepted only if T-COMBAT-01..08 all pass) |
+| ✅ **Test Engineer** | The sole release authority — certify the build and write the acceptance record | `certify_build` → **real compile + run**, then writes `build/acceptance.json` | The acceptance record (accepted only if all 17 pass: T-COMBAT-01..10 + T-REPAIR-01..07) |
 | 📊 **Balance Analyst** | Self-play, then propose one tuning/methodology change | `run_self_play` → AI-vs-AI duels (**refuses without the acceptance record**) | `build/balance_report.md` + proposal |
 
-The **Director** is the human — represented by the input spec (`spec/combat_spec.md`), not an
-agent. Handoff order is fixed and sequential: **spec → implement → certify → balance**, exactly the
+The **Director** is the human — represented by the input spec (`spec/combat_spec.md`, extended by
+`spec/combat_spec_addendum.md` for type-effectiveness + repair), not an agent. Handoff order is fixed and sequential: **spec → implement → certify → balance**, exactly the
 GDD §3 workflow. Agents coordinate through a shared `build/` workspace (they are active file
 participants, not chatbots) — the file-system-integration pattern from Class 4.
 
@@ -39,12 +39,19 @@ See `diagram.mmd` for the architecture (roles, tools, data flow, the fail-loop).
 ## Why the gate is real
 
 `run_test_gate` doesn't ask the model whether its code is correct — it **compiles the C++ with
-`g++` and runs the assertions**. The headline invariant is **T-COMBAT-07**: Artillery (range 2–3)
-must take **zero** counterattack from a range-1 attacker. The classic LLM hallucination here is
-over-generalizing the counter rule to `distance <= rangeMax` (dropping the `rangeMin` check) — it
-passes every other test and fails only T-COMBAT-07. The gate catches it mechanically and hands it
-back for a fix. The offline run demonstrates exactly this: **pass 1 blocks on T-COMBAT-07, pass 2
-passes 8/8.**
+`g++` and runs the assertions** (now **17**: T-COMBAT-01..10 + T-REPAIR-01..07). Two invariants are
+the headline hallucination-catchers, and the offline run trips **both** on pass 1:
+
+- **T-COMBAT-07** — Artillery (range 2–3) must take **zero** counter from a range-1 attacker. The
+  classic hallucination over-generalizes the counter rule to `distance <= rangeMax`, dropping the
+  `rangeMin` check.
+- **T-REPAIR-03** — a unit in enemy contact must **not** heal on an owned objective (the
+  anti-fortress lock, GDD §2.7). The parallel hallucination drops the `!enemyAdjacent` clause.
+
+The type-effectiveness hook ships **neutral** (`effectiveness()` returns 1.0 for every pair), and
+**T-COMBAT-09/10** pin it there — so an agent that "helpfully" invents balance numbers is blocked,
+and the pre-existing combat numbers stay byte-identical. The offline run demonstrates it end to end:
+**pass 1 blocks on T-COMBAT-07 + T-REPAIR-03, pass 2 passes 17/17.**
 
 ## Run it
 
@@ -83,6 +90,7 @@ Both paths — a C++17 compiler (`g++`, `clang++`, `c++`, or MSVC `cl.exe`). Def
 
 ```
 spec/combat_spec.md      Director's input contract (inputs, formula, invariants)
+spec/combat_spec_addendum.md  contract extension: type-effectiveness (eff) + repair
 crew/agents.py           the 3 agents (role/goal/backstory + tools + Claude LLM)
 crew/tasks.py            the 3 tasks, chained spec → implement → gate → balance
 crew/crew.py             assembles the sequential Crew
@@ -104,4 +112,6 @@ diagram.mmd              Mermaid architecture diagram
 
 Every real run yields a commit-able system plus its passing test IDs — the evidence the GDD §2
 **provenance ledger** is waiting on. Point the ledger's *Combat resolution* row at the `Combat.cpp`
-commit and the `T-COMBAT-01..08` result, and the attribution becomes demonstrated fact.
+commit and the gate result (`T-COMBAT-01..10 + T-REPAIR-01..07`), and the attribution becomes
+demonstrated fact — the same gate now also backs the ledger's pending *Repair* and
+*Type-effectiveness* rows once a live run authors them.

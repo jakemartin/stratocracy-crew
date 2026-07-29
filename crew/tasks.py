@@ -19,18 +19,22 @@ def build_tasks(systems_engineer, test_engineer, balance_analyst):
             f"{spec}\n\n"
             "Write the full contents of Combat.cpp (implementing resolveDamage and "
             "defenderCanCounter exactly as specified) and save it with write_combat_impl. "
-            "Do not restate the spec; produce code. Pay attention to invariant 7: the "
-            "counter check must honor BOTH ends of the range band.\n\n"
+            "Do not restate the spec; produce code. Three gates catch the classic "
+            "hallucinations — get them right: (a) invariant 7 — the counter check must "
+            "honor BOTH ends of the range band; (b) T-COMBAT-09 — effectiveness() ships "
+            "1.0 for EVERY type pair, do not invent balance numbers; (c) T-REPAIR-03 — "
+            "repairAmount must return 0 when enemyAdjacent is true (the anti-fortress "
+            "clause).\n\n"
             "Then compile-and-test your own work: call run_test_gate. If it reports a "
             "COMPILE error or any FAIL, read the message, fix build/Combat.cpp (save again "
             "with write_combat_impl), and re-run run_test_gate. Repeat until it reports "
-            "GATE PASS with all of T-COMBAT-01..08 passing. Do not finish until it passes.\n"
+            "GATE PASS with all of T-COMBAT-01..10, T-REPAIR-01..07 passing. Do not finish until it passes.\n"
             "Common pitfall: the declarations live in `namespace strat` (see Combat.h) — "
             "define your functions inside `namespace strat { ... }` (or fully-qualify) and "
             "operate on `strat::Unit`, not a bare `Unit`."
         ),
         expected_output=(
-            "Confirmation that build/Combat.cpp compiles and the gate reports 8/8 passing, "
+            "Confirmation that build/Combat.cpp compiles and the gate reports 17/17 passing, "
             "plus a one-line note on how the counter rule honors the full [rangeMin, rangeMax] band."
         ),
         agent=systems_engineer,
@@ -39,7 +43,7 @@ def build_tasks(systems_engineer, test_engineer, balance_analyst):
     gate = Task(
         description=(
             "Certify the build for release: call certify_build. It runs every invariant "
-            "(T-COMBAT-01..08) and writes build/acceptance.json — the record the Balance "
+            "(T-COMBAT-01..10, T-REPAIR-01..07) and writes build/acceptance.json — the record the Balance "
             "Analyst requires before it will run. Certify only if all pass; if any fails, "
             "the record is marked not-accepted and the crew halts here. Report the verdict."
         ),

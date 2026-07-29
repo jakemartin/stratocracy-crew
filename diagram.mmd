@@ -1,7 +1,7 @@
 %% Stratocracy Agent Crew — roles, tools, and data flow (GDD §3 headless crew)
 %% Each agent owns a distinct artifact; removing any one breaks the chain.
 flowchart TD
-    D["🎯 Director (human)<br/>spec/combat_spec.md"]
+    D["🎯 Director (human)<br/>spec/combat_spec.md (+ _addendum)"]
 
     subgraph CREW["CrewAI sequential crew"]
         SE["🛠 Systems Engineer<br/>authors + self-tests C++"]
@@ -15,11 +15,11 @@ flowchart TD
 
     D -->|"input spec (contract)"| SE
     SE -->|"write_combat_impl"| IMPL
-    SE -->|"run_test_gate (dev self-test)"| SELF{"8/8 pass?"}
+    SE -->|"run_test_gate (dev self-test)"| SELF{"17/17 pass?"}
     SELF -->|"BLOCK — fix & re-author"| SE
     SELF -->|"compiles + self-tested"| TE
     IMPL --> TE
-    TE -->|"certify_build<br/>(real compile + run T-COMBAT-01..08)"| ACC
+    TE -->|"certify_build<br/>(real compile + run<br/>T-COMBAT-01..10 + T-REPAIR-01..07)"| ACC
     ACC -->|"required input — balance refuses without it"| BA
     BA -->|"run_self_play"| REPORT
     REPORT -->|"tuning proposal"| D

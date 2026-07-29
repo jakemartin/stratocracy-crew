@@ -125,7 +125,7 @@ def certify_build_fn() -> dict:
     r = run_test_gate_fn()
     record = {
         "accepted": bool(r["passed"]),
-        "tests": "T-COMBAT-01..08",
+        "tests": "T-COMBAT-01..10, T-REPAIR-01..07",
         "failures": r.get("failures", []),
         "summary": r["summary"],
         "certified_by": "Test Engineer",
@@ -181,7 +181,7 @@ try:
     @tool("run_test_gate")
     def run_test_gate() -> str:
         """Compile build/Combat.cpp against the fixed test harness and run it.
-        This is the merge gate: returns PASS only if every invariant (T-COMBAT-01..08)
+        This is the merge gate: returns PASS only if every invariant (T-COMBAT-01..10, T-REPAIR-01..07)
         holds. On failure it lists exactly which tests failed so the implementation
         can be corrected. Takes no arguments."""
         r = run_test_gate_fn()
@@ -189,7 +189,7 @@ try:
 
     @tool("certify_build")
     def certify_build() -> str:
-        """Run the full invariant gate (T-COMBAT-01..08) AND write the build's acceptance
+        """Run the full invariant gate (T-COMBAT-01..10, T-REPAIR-01..07) AND write the build's acceptance
         record to build/acceptance.json. This certification is REQUIRED before self-play can
         run — the Balance Analyst refuses without it. Certify only a fully passing build.
         Takes no arguments."""

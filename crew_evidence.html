@@ -52,12 +52,12 @@
   .invrow{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:13px}
   .invrow .tick{color:var(--pass);font-weight:700}
   .invrow.high{border-color:var(--gate);background:#241d0e}
-  .invrow .id{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:11.5px;color:var(--faint)}
+  .invrow .id{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:11.5px;color:var(--faint);margin-left:auto}
   /* table */
   table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13.5px}
   th,td{text-align:left;padding:8px 11px;border-bottom:1px solid var(--line)}
   th{color:var(--faint);text-transform:uppercase;font-size:10.5px;letter-spacing:1px;font-weight:600}
-  td.mono,th.mono{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:12.5px}
+  td.mono,th.mono{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:12px}
   /* win bars */
   .bars{margin:6px 0}
   .bar{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:13px}
@@ -75,13 +75,13 @@
 
 <header class="top">
   <h1>Stratocracy Agent Crew — Live Evidence</h1>
-  <div class="sub">Assignment #3 · a CrewAI crew that authors, tests, and balances a real slice of the game — the headless <b style="color:var(--ink)">Combat resolution</b> module</div>
+  <div class="sub">Assignment #3 · a CrewAI crew that authors, tests, and balances a real slice of the game — the headless <b style="color:var(--ink)">Combat resolution</b> module, now extended with <b style="color:var(--ink)">type-effectiveness</b> &amp; <b style="color:var(--ink)">repair</b></div>
   <div class="meta">
     <span class="chip"><b>CrewAI</b> v1.14.6 · sequential</span>
     <span class="chip"><b>3 agents</b> + human Director</span>
     <span class="chip">model <b>claude-sonnet-5</b></span>
     <span class="chip">gate = <b>real g++/clang++/cl compile + run</b></span>
-    <span class="chip">commit <b>30d0fe3</b></span>
+    <span class="chip">live run · <b>17/17 passed</b></span>
   </div>
 </header>
 
@@ -91,7 +91,7 @@
     <div class="who">Human</div>
     <div class="role">Director</div>
     <div>Writes the spec &amp; invariants; reviews the merge.</div>
-    <div class="tool">spec/combat_spec.md</div>
+    <div class="tool">combat_spec.md + _addendum</div>
   </div>
   <div class="arrow">→</div>
   <div class="node">
@@ -118,20 +118,22 @@
 <div class="note">The gate is not the model's opinion of its code — it is a real compiler (<code>g++</code>/<code>clang++</code>/<code>cl.exe</code>) plus assertions. A build that doesn't compile, or fails any invariant, is blocked mechanically.</div>
 <div class="note"><b>No agent is removable.</b> Each owns a distinct artifact the next one needs: Systems Engineer → <code>Combat.cpp</code>, Test Engineer → <code>acceptance.json</code> (it is the only writer), Balance Analyst → the report. <code>run_self_play</code> refuses without an accepted record, so removing the Test Engineer halts the pipeline. The Systems Engineer's own <code>run_test_gate</code> is dev-time self-testing — it never certifies for release.</div>
 
-<h2 class="section">What the live crew actually did — two runs</h2>
-
-<div class="run block">
-  <h3><span class="pill p-block">RUN 1 · BLOCKED</span> the gate caught a real bug</h3>
-  <p>Running against live Claude, the Systems Engineer authored <code>Combat.cpp</code> — but referenced a bare <code>Unit</code> instead of <code>strat::Unit</code> (a namespace-qualification error). The code <b>did not compile</b>. The gate returned a compile failure, <b>0/8 tests ran</b>, and the merge was blocked. The Balance Analyst correctly refused to run self-play against a non-compiling build.</p>
-  <p>This is the whole thesis working: <b>the real compiler caught real agent-generated broken code</b> — not a scripted demo. The gap it exposed: a plain sequential crew has no repair loop, so the run ended blocked.</p>
-</div>
+<h2 class="section">What the live crew did</h2>
 
 <div class="run pass">
-  <h3><span class="pill p-pass">RUN 2 · PASSED 8/8</span> the crew self-corrected to green</h3>
-  <p>Fix applied: the Systems Engineer was given the gate tool and instructed to compile-and-test its own output and iterate until it passes (bounded to 12 tries); the spec now states the <code>namespace strat</code> requirement up front. On the next live run the agent authored a <b>correct</b> module — proper namespace, exact damage formula, and a counter check honoring <b>both</b> ends of the range band. The gate passed all eight invariants and the Balance Analyst produced a full report.</p>
+  <h3><span class="pill p-pass">LIVE RUN · CERTIFIED 17/17</span> autonomous authoring, real gate</h3>
+  <p>Against live Claude, the Systems Engineer read the Director's contract — <code>combat_spec.md</code> <b>plus the addendum</b> (type-effectiveness + repair) — and authored the full <code>Combat.cpp</code>: the damage formula, the range-band counter check, a neutral <code>effectiveness()</code> table, and the <code>repairAmount()</code> rule. It compiled and self-tested its own output through the gate, iterating until green, then handed off. The Test Engineer independently certified the build: a real <code>g++</code> compile + run of <b>all 17 invariants → 17/17</b>, writing <code>build/acceptance.json</code>. The Balance Analyst, gated behind that record, ran self-play and produced a full report. The complete transcript is in <code>build/run_log.md</code>.</p>
 </div>
 
-<h2 class="section">The merge gate — 8 invariants, all passing (Run 2)</h2>
+<div class="run block">
+  <h3><span class="pill p-block">THE GATE HAS TEETH</span> two hallucinations it blocks</h3>
+  <p>The deterministic offline run injects the two classic <b>plausible-but-wrong</b> rules and shows the gate catching each mechanically — the same 17 invariants, no model in the loop:</p>
+  <p>① <b>Counter rule</b> — writing <code>distance &lt;= rangeMax</code> (dropping the <code>rangeMin</code> check) lets Artillery counter at range 1. Passes everything else, fails <code>T-COMBAT-07</code>.<br>
+  ② <b>Repair rule</b> — dropping the <code>!enemyAdjacent</code> clause lets a unit heal while in enemy contact, turning a front-line factory into an unkillable fortress. Fails <code>T-REPAIR-03</code>.<br>
+  Offline: <b>pass 1 blocks on T-COMBAT-07 + T-REPAIR-03 → pass 2 passes 17/17.</b></p>
+</div>
+
+<h2 class="section">The merge gate — 17 invariants, all passing</h2>
 <div class="inv">
   <div class="invrow"><span class="tick">✓</span><span>Determinism</span><span class="id">T-COMBAT-01</span></div>
   <div class="invrow"><span class="tick">✓</span><span>Min-damage floor (≥1)</span><span class="id">T-COMBAT-02</span></div>
@@ -141,32 +143,63 @@
   <div class="invrow"><span class="tick">✓</span><span>Counter only within range band</span><span class="id">T-COMBAT-06</span></div>
   <div class="invrow high"><span class="tick">✓</span><span><b>Artillery immune to range-1 counter</b></span><span class="id">T-COMBAT-07</span></div>
   <div class="invrow"><span class="tick">✓</span><span>Artillery counters at range 2–3</span><span class="id">T-COMBAT-08</span></div>
+  <div class="invrow"><span class="tick">✓</span><span>Type-effectiveness ships neutral (all 1.0)</span><span class="id">T-COMBAT-09</span></div>
+  <div class="invrow"><span class="tick">✓</span><span>Neutral eff preserves the baseline</span><span class="id">T-COMBAT-10</span></div>
+  <div class="invrow"><span class="tick">✓</span><span>No heal at full HP</span><span class="id">T-REPAIR-01</span></div>
+  <div class="invrow"><span class="tick">✓</span><span>Basic heal on owned objective (+25%)</span><span class="id">T-REPAIR-02</span></div>
+  <div class="invrow high"><span class="tick">✓</span><span><b>Anti-fortress: no heal in enemy contact</b></span><span class="id">T-REPAIR-03</span></div>
+  <div class="invrow"><span class="tick">✓</span><span>Must be on an owned objective</span><span class="id">T-REPAIR-04</span></div>
+  <div class="invrow"><span class="tick">✓</span><span>Never overheal past max</span><span class="id">T-REPAIR-05</span></div>
+  <div class="invrow"><span class="tick">✓</span><span>Min-1 heal floor</span><span class="id">T-REPAIR-06</span></div>
+  <div class="invrow"><span class="tick">✓</span><span>Determinism</span><span class="id">T-REPAIR-07</span></div>
 </div>
-<div class="note"><b>T-COMBAT-07 is the hallucination gate.</b> An agent that writes <code>distance &lt;= rangeMax</code> (dropping the <code>rangeMin</code> check) passes every other test but fails this one — which is exactly the bug the offline demo injects and the gate blocks.</div>
+<div class="note"><b>Two hallucination gates.</b> <code>T-COMBAT-07</code> (range-band counter) and <code>T-REPAIR-03</code> (anti-fortress repair) each catch a rule an agent tends to over-generalize — they pass every other test and fail only their own. Type-effectiveness ships <b>neutral</b> (all-1.0), and <code>T-COMBAT-09/10</code> pin it there so the shipped balance numbers stay byte-identical to the pre-addendum module.</div>
 
-<h2 class="section">The agent-authored module (Run 2)</h2>
+<h2 class="section">The agent-authored module (live run)</h2>
 <pre><span class="cmt">#include "Combat.h"</span>
 <span class="cmt">#include &lt;cmath&gt;</span>
 <span class="cmt">#include &lt;algorithm&gt;</span>
 
 <span class="kw">namespace</span> strat {
 
+<span class="kw">double</span> <span class="fn">effectiveness</span>(UnitType attacker, UnitType defender) {
+    <span class="cmt">// Neutral stub this revision: positional triangle only (GDD Pillar 3),</span>
+    <span class="cmt">// no type counter-chart yet. Every ordered pair maps to 1.0.</span>
+    (<span class="kw">void</span>)attacker;
+    (<span class="kw">void</span>)defender;
+    <span class="kw">return</span> <span class="num">1.0</span>;
+}
+
 <span class="kw">int</span> <span class="fn">resolveDamage</span>(<span class="kw">const</span> Unit&amp; attacker, <span class="kw">const</span> Unit&amp; defender, <span class="kw">int</span> terrainDefPct) {
-    <span class="kw">double</span> hpRatio = <span class="kw">static_cast</span>&lt;<span class="kw">double</span>&gt;(attacker.hp) / <span class="kw">static_cast</span>&lt;<span class="kw">double</span>&gt;(attacker.hpMax);
-    <span class="kw">double</span> terrainMult = <span class="num">1.0</span> - (<span class="kw">static_cast</span>&lt;<span class="kw">double</span>&gt;(terrainDefPct) / <span class="num">100.0</span>);
-    <span class="kw">double</span> raw = <span class="kw">static_cast</span>&lt;<span class="kw">double</span>&gt;(attacker.atk) * hpRatio * terrainMult;
+    <span class="kw">double</span> eff = <span class="fn">effectiveness</span>(attacker.type, defender.type);
+    <span class="kw">double</span> hpFrac = <span class="kw">static_cast</span>&lt;<span class="kw">double</span>&gt;(attacker.hp) / <span class="kw">static_cast</span>&lt;<span class="kw">double</span>&gt;(attacker.hpMax);
+    <span class="kw">double</span> terrainFactor = <span class="num">1.0</span> - (<span class="kw">static_cast</span>&lt;<span class="kw">double</span>&gt;(terrainDefPct) / <span class="num">100.0</span>);
+
+    <span class="kw">double</span> raw = <span class="kw">static_cast</span>&lt;<span class="kw">double</span>&gt;(attacker.atk) * eff * hpFrac * terrainFactor;
     <span class="kw">int</span> rounded = <span class="kw">static_cast</span>&lt;<span class="kw">int</span>&gt;(std::<span class="fn">lround</span>(raw));
     <span class="kw">int</span> dmg = rounded - defender.def;
+
     <span class="kw">return</span> std::<span class="fn">max</span>(<span class="num">1</span>, dmg);
 }
 
 <span class="kw">bool</span> <span class="fn">defenderCanCounter</span>(<span class="kw">const</span> Unit&amp; defender, <span class="kw">int</span> distance) {
-    <span class="kw">return</span> distance &gt;= defender.rangeMin &amp;&amp; distance &lt;= defender.rangeMax;  <span class="cmt">// both bounds</span>
+    <span class="cmt">// Full range band [rangeMin, rangeMax] — both ends matter (T-COMBAT-07).</span>
+    <span class="kw">return</span> distance &gt;= defender.rangeMin &amp;&amp; distance &lt;= defender.rangeMax;
+}
+
+<span class="kw">int</span> <span class="fn">repairAmount</span>(<span class="kw">const</span> Unit&amp; u, <span class="kw">bool</span> onOwnedObjective, <span class="kw">bool</span> enemyAdjacent) {
+    <span class="kw">if</span> (!onOwnedObjective || enemyAdjacent || u.hp &gt;= u.hpMax) {
+        <span class="kw">return</span> <span class="num">0</span>;                       <span class="cmt">// anti-fortress clause (T-REPAIR-03)</span>
+    }
+    <span class="kw">int</span> base = <span class="kw">static_cast</span>&lt;<span class="kw">int</span>&gt;(std::<span class="fn">floor</span>(<span class="num">0.25</span> * <span class="kw">static_cast</span>&lt;<span class="kw">double</span>&gt;(u.hpMax)));
+    <span class="kw">if</span> (base &lt; <span class="num">1</span>) { base = <span class="num">1</span>; }        <span class="cmt">// min-1 floor</span>
+    <span class="kw">int</span> room = u.hpMax - u.hp;
+    <span class="kw">return</span> std::<span class="fn">min</span>(base, room);          <span class="cmt">// never overheal</span>
 }
 
 } <span class="cmt">// namespace strat</span></pre>
 
-<h2 class="section">Balance Analyst — self-play findings (Run 2)</h2>
+<h2 class="section">Balance Analyst — self-play findings</h2>
 <p style="color:var(--dim);margin:0 0 6px">12 one-versus-one duels on plains. Win tally:</p>
 <div class="bars">
   <div class="bar"><span class="lab">Tank</span><span class="track"><span class="fill" style="width:100%"></span></span><span class="val">6</span></div>
@@ -174,20 +207,22 @@
   <div class="bar"><span class="lab">Artillery</span><span class="track"><span class="fill" style="width:33%"></span></span><span class="val">2</span></div>
   <div class="bar"><span class="lab">Infantry</span><span class="track"><span class="fill" style="width:16.6%"></span></span><span class="val">1</span></div>
 </div>
-<div class="note"><b>The agent's read (not just the tally):</b> Tank goes 6/6, but the Tank-vs-Artillery result is a <b>methodology artifact</b> — the harness forces every duel to distance 1, where Artillery (range 2–3) is mechanically barred from countering (correctly, per T-COMBAT-07), so it fights as "a worse Tank." The proposal is a <b>fix to the test, not a stat nerf</b>: sweep engagement distance (1 / 2 / 3) and report win-rate per band, so Artillery's standoff design can actually surface before anyone re-tunes stats.</div>
+<div class="note"><b>The agent's read (not just the tally):</b> Tank goes 6/6, but Artillery-vs-Tank is a <b>methodology artifact</b>. The harness forces every duel to distance 1, where Artillery (range 2–3) is correctly barred from countering (T-COMBAT-07/08 confirm the band gating works) — so it fights as "a worse Tank" in the one range where its standoff design gives it nothing. The agent's proposal is a <b>fix to the test, not a stat nerf</b>: run each matchup at its native range (add a distance-2 opening for <code>rangeMax ≥ 2</code>) so Artillery's real envelope surfaces before anyone re-tunes numbers.</div>
 
 <h2 class="section">Provenance ledger — the rows this backs (GDD §3)</h2>
 <table>
-  <thead><tr><th>System</th><th>Author</th><th>Verified</th><th class="mono">Evidence</th></tr></thead>
+  <thead><tr><th>System</th><th>Author</th><th>Verified</th><th class="mono">Evidence (this live run)</th></tr></thead>
   <tbody>
-    <tr><td><b>Combat resolution</b></td><td>agent</td><td><span class="pill p-pass">✓</span></td><td class="mono">Combat.cpp @ 30d0fe3 · T-COMBAT-01..08 (8/8)</td></tr>
-    <tr><td><b>Test suite</b></td><td>agent</td><td><span class="pill p-pass">✓</span></td><td class="mono">test_combat.cpp @ 30d0fe3 · 8/8</td></tr>
+    <tr><td><b>Combat resolution</b></td><td>agent</td><td><span class="pill p-pass">✓</span></td><td class="mono">Combat.cpp · T-COMBAT-01..10 (10/10)</td></tr>
+    <tr><td><b>Test suite</b></td><td>agent</td><td><span class="pill p-pass">✓</span></td><td class="mono">test_combat.cpp · 17/17</td></tr>
+    <tr><td><b>Repair</b></td><td>agent</td><td><span class="pill p-pass">✓</span></td><td class="mono">Combat.cpp::repairAmount · T-REPAIR-01..07 (7/7)</td></tr>
+    <tr><td><b>Type-effectiveness</b></td><td>agent</td><td><span class="pill p-pass">✓</span></td><td class="mono">Combat.cpp::effectiveness · T-COMBAT-09..10 (neutral)</td></tr>
   </tbody>
 </table>
-<div class="note">Both rows are agent-authored and gate-verified — now backed by an <b>autonomous live crew run</b>, not scaffolding. The remaining game systems stay honestly marked <i>pending build</i>.</div>
+<div class="note">All four rows are agent-authored and gate-verified by this <b>autonomous live crew run</b> (<code>build/run_log.md</code>, <code>build/acceptance.json</code> = 17/17). The GDD §3 ledger cells flip to ✓ with the commit hash once this build is committed; the remaining game systems stay honestly marked <i>pending build</i>.</div>
 
 <footer>
-  Generated from the live CrewAI run against claude-sonnet-5. The crew, spec, tests, and this evidence live in <code>stratocracy-crew/</code>; the full transcript is saved to <code>build/run_log.md</code> on every run.
+  Generated from the live CrewAI run against claude-sonnet-5. The crew, spec (<code>combat_spec.md</code> + <code>combat_spec_addendum.md</code>), tests, and this evidence live in <code>stratocracy-crew/</code>; the full transcript is saved to <code>build/run_log.md</code> on every run.
 </footer>
 
 </div>

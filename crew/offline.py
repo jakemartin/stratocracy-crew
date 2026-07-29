@@ -20,7 +20,9 @@ def run_offline(log) -> dict:
     # --- Systems Engineer, pass 1: the hallucinated implementation --------------
     log("[Director -> Systems Engineer] spec/combat_spec.md handed over.")
     log(tools.write_combat_impl_fn(tools.read_reference("Combat.buggy.cpp")))
-    log("[Systems Engineer] pass 1 authored (counter rule = 'distance <= rangeMax').\n")
+    log("[Systems Engineer] pass 1 authored — two plausible-but-wrong rules: counter = "
+        "'distance <= rangeMax' (drops rangeMin), and repair heals even in enemy contact "
+        "(drops the anti-fortress clause).\n")
 
     # --- Systems Engineer self-test: catches its own hallucination on pass 1 ----
     r1 = tools.run_test_gate_fn()
@@ -38,12 +40,14 @@ def run_offline(log) -> dict:
             "T-COMBAT-07; continuing anyway.\n")
     else:
         log(f"[Systems Engineer · self-test] BLOCK — {', '.join(r1['failures'])} caught the "
-            "hallucinated counter rule. Fixing before hand-off.\n")
+            "hallucinated rules. Fixing before hand-off.\n")
 
     # --- Systems Engineer, pass 2: corrected implementation ---------------------
-    log("[Systems Engineer] re-fed invariant 7; correcting the range-band check.")
+    log("[Systems Engineer] re-fed invariant 7 (range band) and T-REPAIR-03 "
+        "(anti-fortress); correcting both.")
     log(tools.write_combat_impl_fn(tools.read_reference("Combat.good.cpp")))
-    log("[Systems Engineer] pass 2 authored (counter honors [rangeMin, rangeMax]).\n")
+    log("[Systems Engineer] pass 2 authored (counter honors [rangeMin, rangeMax]; repair "
+        "refuses when enemy-adjacent).\n")
 
     r2 = tools.run_test_gate_fn()
     log("[Systems Engineer · self-test] " + r2["summary"])
