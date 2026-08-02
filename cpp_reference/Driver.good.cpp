@@ -162,10 +162,15 @@ struct Fixture { const char* name; int cols; int rows; const char* const* glyphs
 
 const char* const kRiver[5] = { "...~...", ".F.~...", "...B...", ".M.~...", "...~..." };
 const char* const kOpen[3]  = { ".....", ".....", "....." };
+// Objectives to exercise row 4: a factory per side, a neutral factory between them,
+// and two towns. All start NEUTRAL — initial ownership is scenario data (Stub 7,
+// unbuilt), so the driver leaves it unset rather than inventing a starting layout.
+const char* const kContested[3] = { "X.....X", "...X...", "..T.T.." };
 
-const Fixture kFixtures[2] = {
-    {"river", 7, 5, kRiver},   // a Water column crossed by one Bridge
-    {"open",  5, 3, kOpen},    // flat plains, for range and counter cases
+const Fixture kFixtures[3] = {
+    {"river",     7, 5, kRiver},      // a Water column crossed by one Bridge
+    {"open",      5, 3, kOpen},       // flat plains, for range and counter cases
+    {"contested", 7, 3, kContested},  // 3 factories + 2 towns, for capture and Fame
 };
 } // namespace
 
@@ -198,6 +203,29 @@ bool loadFixture(Session& s, const std::string& name, std::string& err) {
         next.units.clear();
         next.nextUnitId = 1;
         next.loaded = true;
+
+        // Row 4 state. Objectives are every capturable tile the TABLE marks -- the
+        // driver does not decide what is capturable, Data.h does. Ownership starts
+        // neutral because initial ownership is scenario data (Stub 7, unbuilt), and
+        // both sides open on the §2.7 Normal-tier value; `initSide` takes it as an
+        // argument so no tier is baked in here (Q8).
+        next.economy = EconomyState();
+        next.economy.captureTurns = 1;              // N = 1, the shipped scenario's value
+        for (int row = 0; row < f.rows; ++row) {
+            for (int col = 0; col < f.cols; ++col) {
+                const int ti = next.terrain[static_cast<std::size_t>(row) * f.cols + col];
+                if (!s.terrainDefs[ti].capturable) continue;
+                Objective o;
+                o.hex = offsetToAxial(col, row);
+                o.owner = OWNER_NEUTRAL;
+                o.terrainIndex = ti;
+                next.economy.objectives.push_back(o);
+            }
+        }
+        initSide(next.economy, 0, 200);
+        initSide(next.economy, 1, 200);
+        next.turnNumber = 1;
+
         s = next;
         return true;
     }
@@ -229,6 +257,36 @@ std::string stateHash(const Session& s) {
         axialToOffset(u->hex, col, row);
         acc += num(u->id) + ":" + num(u->side) + ":" + num(u->defIndex) + ":" +
                num(col) + ":" + num(row) + ":" + num(u->hp) + ";";
+    }
+    // Row 4 state is part of the state a refused command must not change, so it is
+    // part of the hash (GATE-DRV-06). Objectives and captures are visited in
+    // canonical hex order for the same reason the units above are.
+    acc += "|turn" + num(s.turnNumber) + "|";
+    for (int i = 0; i < SIDE_COUNT; ++i)
+        acc += num(s.economy.side[i].fameTotal) + "/" + num(s.economy.side[i].fameCombat) + ";";
+    {
+        std::vector<Hex> keys;
+        for (const Objective& o : s.economy.objectives) keys.push_back(o.hex);
+        sortCanonical(keys);
+        for (const Hex& k : keys)
+            for (const Objective& o : s.economy.objectives)
+                if (hexEqual(o.hex, k)) {
+                    int c = 0, r = 0;
+                    axialToOffset(o.hex, c, r);
+                    acc += "o" + num(c) + ":" + num(r) + ":" + num(o.owner) + ";";
+                }
+        std::vector<Hex> ckeys;
+        for (const CaptureProgress& p : s.economy.captures) ckeys.push_back(p.hex);
+        sortCanonical(ckeys);
+        for (const Hex& k : ckeys)
+            for (const CaptureProgress& p : s.economy.captures)
+                if (hexEqual(p.hex, k))
+                    acc += "c" + num(p.unitId) + ":" + num(p.turnsHeld) + ";";
+        for (const PendingBuild& p : s.economy.pending) {
+            int c = 0, r = 0;
+            axialToOffset(p.factoryHex, c, r);
+            acc += "b" + num(c) + ":" + num(r) + ":" + num(p.side) + ":" + num(p.defIndex) + ";";
+        }
     }
     unsigned long long h = 1469598103934665603ULL;          // FNV-1a, 64-bit
     for (char c : acc) { h ^= static_cast<unsigned char>(c); h *= 1099511628211ULL; }
@@ -279,7 +337,10 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
         out.push_back("remove <id> | hp <id> <v> | dist <c1> <r1> <c2> <r2>");
         out.push_back("reach <id> | path <id> <col> <row> | move <id> <col> <row>");
         out.push_back("forecast <atk> <def> | attack <atk> <def> | repair <id> <owned 0|1>");
-        out.push_back("NOTE: no turns, no capture, no Fame, no AI -- rows 4-8 hold no code.");
+        out.push_back("row 4: fame | objectives | turn <n> | income <side> |");
+        out.push_back("       build <side> <Type> <col> <row> | capture <side>");
+        out.push_back("NOTE: no turn loop, no AI, no scenario file -- rows 5-8 hold no");
+        out.push_back("code. 'turn <n>' is a debug setter, not a turn structure.");
         return true;
     }
 
@@ -442,13 +503,24 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
             return true;
         }
         // Resolution applies exactly what the forecast above reported (GATE-DRV-03).
+        const int atkSide = findUnitById(s, a)->side;
+        const int defSide = findUnitById(s, d)->side;
+        const int defDef  = findUnitById(s, d)->defIndex;
         out.push_back(atkName + " hits " + defName + " for " + num(o.damage));
         if (o.defenderDies) {
             s.units.erase(std::remove_if(s.units.begin(), s.units.end(),
                            [d](const DriverUnit& u) { return u.id == d; }), s.units.end());
-            out.push_back(defName + " #" + num(d) + " destroyed");
+            // Row 4: the kill award. Economy.h decides the amount; the flag flag is
+            // false because no unit is a flag until Stub 7's `isFlag` placement field
+            // exists (row 7, unbuilt) -- the driver does not invent one.
+            awardKill(s.economy, atkSide, s.unitDefs[defDef], false);
+            out.push_back(defName + " #" + num(d) + " destroyed — side " + num(atkSide) +
+                          " earns " + num(killAward(s.unitDefs[defDef], false)) +
+                          " Fame (half cost, Q5) -> fameCombat " +
+                          num(s.economy.side[atkSide].fameCombat));
             return true;
         }
+        (void)defSide;
         mutableUnitById(s, d)->hp -= o.damage;
         if (o.counterFires) {
             out.push_back(defName + " counters for " + num(o.counterDamage));
@@ -459,6 +531,110 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
             } else {
                 mutableUnitById(s, a)->hp -= o.counterDamage;
             }
+        }
+        return true;
+    }
+
+    // --- row 4 surfaces. Every one of these delegates to Economy.h -------------
+    if (cmd == "fame") {
+        for (int i = 0; i < SIDE_COUNT; ++i)
+            out.push_back("side " + num(i) + ": fameTotal " + num(s.economy.side[i].fameTotal) +
+                          ", fameCombat " + num(s.economy.side[i].fameCombat));
+        out.push_back("turn " + num(s.turnNumber) +
+                      " (no turn loop exists — row 5 unbuilt; 'turn <n>' sets it)");
+        return true;
+    }
+
+    if (cmd == "objectives") {
+        if (s.economy.objectives.empty()) { out.push_back("(no objectives)"); return true; }
+        for (const Objective& o : s.economy.objectives) {
+            int col = 0, row = 0;
+            axialToOffset(o.hex, col, row);
+            const TerrainDef& td = s.terrainDefs[o.terrainIndex];
+            std::string owner = (o.owner == OWNER_NEUTRAL) ? "neutral" : ("side " + num(o.owner));
+            std::string prog;
+            for (const CaptureProgress& c : s.economy.captures)
+                if (hexEqual(c.hex, o.hex))
+                    prog = " [capture " + num(c.turnsHeld) + "/" + num(s.economy.captureTurns) +
+                           " by #" + num(c.unitId) + "]";
+            out.push_back("(" + num(col) + "," + num(row) + ") " + td.id + " — " + owner +
+                          ", income " + num(td.incomeFame) + prog);
+        }
+        return true;
+    }
+
+    if (cmd == "turn") {
+        int n = 0;
+        if (t.size() != 2 || !parseInt(t[1], n) || n < 1) {
+            out.push_back("refused: usage: turn <n>, n >= 1"); return true; }
+        s.turnNumber = n;
+        out.push_back("turn = " + num(n) + " (a debug setter, not a turn loop)");
+        return true;
+    }
+
+    if (cmd == "income") {
+        int side = 0;
+        if (t.size() != 2 || !parseInt(t[1], side)) {
+            out.push_back("refused: usage: income <side>"); return true; }
+        if (side < 0 || side >= SIDE_COUNT) { out.push_back("refused: side must be 0 or 1"); return true; }
+        const int gained = accrueIncome(s.economy, s.terrainDefs, side, s.turnNumber);
+        out.push_back("side " + num(side) + " accrued " + num(gained) + " on turn " +
+                      num(s.turnNumber) + (s.turnNumber <= 1 ? " (no accrual on turn 1 — Q8)" : "") +
+                      " -> fameTotal " + num(s.economy.side[side].fameTotal));
+        return true;
+    }
+
+    if (cmd == "build") {
+        int side = 0, col = 0, row = 0;
+        if (t.size() != 5 || !parseInt(t[1], side) || !parseInt(t[3], col) || !parseInt(t[4], row)) {
+            out.push_back("refused: usage: build <side> <Type> <col> <row>"); return true; }
+        int defIndex = -1;
+        for (std::size_t i = 0; i < s.unitDefs.size(); ++i)
+            if (s.unitDefs[i].id == t[2]) defIndex = static_cast<int>(i);
+        if (defIndex < 0) { out.push_back("refused: no unit type '" + t[2] + "'"); return true; }
+        const Hex factory = offsetToAxial(col, row);
+        std::string e;
+        if (!queueBuild(s.economy, s.unitDefs, s.terrainDefs, side, factory, defIndex, e)) {
+            out.push_back("refused: " + e); return true; }
+        out.push_back("queued " + s.unitDefs[defIndex].id + " at (" + num(col) + "," + num(row) +
+                      ") — " + num(s.unitDefs[defIndex].costFame) +
+                      " Fame committed at queue time, not refundable (Q8) -> fameTotal " +
+                      num(s.economy.side[side].fameTotal));
+        std::vector<Hex> occupied;
+        for (const DriverUnit& u : s.units) occupied.push_back(u.hex);
+        const std::vector<SpawnResult> spawns = resolveBuilds(s.economy, s.bounds, occupied);
+        for (const SpawnResult& sp : spawns) {
+            if (!sp.spawned) { out.push_back("  boxed in — build waits and holds the slot"); continue; }
+            DriverUnit u;
+            u.id = s.nextUnitId++;
+            u.side = sp.side; u.defIndex = sp.defIndex; u.hex = sp.hex;
+            u.hp = s.unitDefs[sp.defIndex].hpMax;
+            s.units.push_back(u);
+            int sc = 0, sr = 0;
+            axialToOffset(sp.hex, sc, sr);
+            out.push_back("  spawned #" + num(u.id) + " at (" + num(sc) + "," + num(sr) + ")");
+        }
+        return true;
+    }
+
+    if (cmd == "capture") {
+        int side = 0;
+        if (t.size() != 2 || !parseInt(t[1], side)) {
+            out.push_back("refused: usage: capture <side>"); return true; }
+        if (side < 0 || side >= SIDE_COUNT) { out.push_back("refused: side must be 0 or 1"); return true; }
+        std::vector<CaptureOccupant> occ;
+        for (const DriverUnit& u : s.units) {
+            CaptureOccupant c;
+            c.hex = u.hex; c.unitId = u.id; c.side = u.side;
+            c.canCapture = s.unitDefs[u.defIndex].canCapture;
+            occ.push_back(c);
+        }
+        const std::vector<Hex> flipped = captureTick(s.economy, occ, side);
+        if (flipped.empty()) { out.push_back("nothing changed hands"); return true; }
+        for (const Hex& h : flipped) {
+            int c = 0, r = 0;
+            axialToOffset(h, c, r);
+            out.push_back("side " + num(side) + " captured (" + num(c) + "," + num(r) + ")");
         }
         return true;
     }

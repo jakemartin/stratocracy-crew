@@ -79,7 +79,8 @@ def run_offline(log) -> dict:
 
 
 def run_week1(log) -> dict:
-    """The same spec -> gate -> certify flow for GDD §4.11 rows 1-3 (§4.4 week 1).
+    """The same spec -> gate -> certify flow for GDD §4.11 rows 1-4 (§4.4 week 1,
+    plus row 4, which week 1 does not owe but which the critical path runs through).
 
     Rows 1 and 2 are authored and gated first because row 3 depends on both (§4.11's
     Depends-on column). Row 3 then repeats the Combat demonstration with the movement
@@ -88,7 +89,7 @@ def run_week1(log) -> dict:
     it promises "the real move set, not an estimate".
     """
     log("\n" + "=" * 78)
-    log("WEEK 1 — GDD §4.11 rows 1-3 + the debug-command driver")
+    log("WEEK 1 — GDD §4.11 rows 1-4 + the debug-command driver")
     log("=" * 78 + "\n")
 
     # Combat is a PREREQUISITE, not a work item (§4.11: "green at 5ffa8d6 and are
@@ -163,6 +164,41 @@ def run_week1(log) -> dict:
         return {"status": "error", "gate_passed": False,
                 "failures_caught": m1.get("failures", [])}
 
+    # --- row 4: the next link on the critical path -------------------------------
+    log("\n[Director -> Systems Engineer] spec/economy_spec.md handed over (row 4 — "
+        "Capture & Fame economy). Four of its nine invariants encode a RULED question "
+        "(Q4, Q5, Q6, Q8), so the gate asserts the ruling and not the intuition it "
+        "overturned.")
+    log(tools.write_module_impl_fn("fame", tools.read_reference("Economy.buggy.cpp")))
+    log("[Systems Engineer] pass 1 authored — income accrues on turn 1 (every strategy "
+        "game pays you on turn 1), and passive income also credits fameCombat (Fame is "
+        "one pool, so surely every source touches every counter).\n")
+
+    f1 = tools.run_row_gate_fn("fame")
+    log("[Systems Engineer · self-test] " + f1["summary"])
+    for line in f1["log"].splitlines():
+        log("    " + line)
+    if f1["passed"]:
+        log("[note] pass 1 unexpectedly passed — the bundled 'buggy' economy should "
+            "fail T-FAME-01 and T-FAME-02; continuing anyway.\n")
+    else:
+        log(f"\n[Systems Engineer · self-test] BLOCK — {', '.join(f1['failures'])} caught it. "
+            "Q8 ruled that turn-1 buying power is starting Fame ALONE; and fameCombat is "
+            "§2.8's tiebreak sort key, so crediting income to it would let a side that "
+            "never fought win criterion 1 and make the mutual-passivity guard "
+            "unreachable. Fixing before hand-off.\n")
+
+    log("[Systems Engineer] re-fed Q8 and T-FAME-01; correcting both.")
+    log(tools.write_module_impl_fn("fame", tools.read_reference("Economy.good.cpp")))
+    f2 = tools.run_row_gate_fn("fame")
+    log("[Systems Engineer · self-test] " + f2["summary"])
+    for line in f2["log"].splitlines():
+        log("    " + line)
+    if not f2["passed"]:
+        log("[stop] row 4 pass 2 did not pass — see the failures above.")
+        return {"status": "error", "gate_passed": False,
+                "failures_caught": f1.get("failures", [])}
+
     # --- the debug-command driver: week 1's OTHER promise ------------------------
     log("\n[Director -> Systems Engineer] spec/driver_spec.md handed over. §4.4 week 1 "
         "promises rows 1-3 AND 'Playable via debug commands'; the rows are green and "
@@ -170,8 +206,9 @@ def run_week1(log) -> dict:
     log(tools.write_module_impl_fn("driver", tools.read_reference("Driver.good.cpp")))
     log("[Systems Engineer] authored — the driver contains NO RULES: reach/path/move "
         "delegate to Move.h, damage and counters to Combat.h, stats to Data.h, "
-        "distance and adjacency to Hex.h. Where rows 4-8 would be needed — ownership, "
-        "turns, scenarios — it refuses rather than deciding.")
+        "distance and adjacency to Hex.h, and now capture/income/build to Economy.h. "
+        "Where rows 5-8 would be needed — turn order, AI, scenario files — it "
+        "refuses rather than deciding.")
     d = tools.run_row_gate_fn("driver")
     log("[Systems Engineer · self-test] " + d["summary"])
     for line in d["log"].splitlines():

@@ -8,6 +8,7 @@
 
 #include "Combat.h"
 #include "Data.h"
+#include "Economy.h"
 #include "Hex.h"
 #include "Move.h"
 
@@ -31,6 +32,13 @@ struct Session {
     std::vector<TerrainDef> terrainDefs;
     int nextUnitId = 1;
     bool loaded    = false;            // false until a fixture is loaded
+
+    // Row 4. The driver still owns no rules: every economy transition below is a
+    // call into Economy.h. `turnNumber` exists ONLY to feed T-FAME-02's no-accrual-
+    // on-turn-1 argument -- it is not a turn loop, which is row 5's and unbuilt, so
+    // nothing advances it but the explicit `turn` command.
+    EconomyState economy;
+    int turnNumber = 1;
 };
 
 // Loads data/units.csv, data/terrain.csv and data/effectiveness.csv. False on any

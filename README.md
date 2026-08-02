@@ -53,17 +53,20 @@ The type-effectiveness hook ships **neutral** (`effectiveness()` returns 1.0 for
 and the pre-existing combat numbers stay byte-identical. The offline run demonstrates it end to end:
 **pass 1 blocks on T-COMBAT-07 + T-REPAIR-03, pass 2 passes 17/17.**
 
-## Week 1 — GDD §4.11 rows 1-3 (added after the Assignment-3 submission)
+## §4.11 rows 1-4 (added after the Assignment-3 submission)
 
 The Combat module above is one row of the GDD's §3 provenance ledger. **§4.4 week 1
 owes three more** — §4.11 rows 1-3 — and they are built here, through the same
-spec → author → gate → certify pipeline:
+spec → author → gate → certify pipeline. **Row 4 is week 3's work** (§4.4: "Capture +
+production (§4.11 rows 4-5)"), delivered early because §4.11's critical path runs
+`1 → 3 → 4 → 5 → 6/8` and row 4 was the only unblocked link on it:
 
-| Row | System | Spec | Acceptance |
-|---|---|---|---|
-| 1 | Hex grid & math | `spec/hex_spec.md` | T-HEX-01..07 |
-| 2 | Data tables (units/terrain/effectiveness) | `spec/data_spec.md` | T-DATA-01..04, 06 |
-| 3 | Movement & pathfinding | `spec/move_spec.md` | T-MOVE-01..06 |
+| Row | System | Spec | Acceptance | §4.4 week |
+|---|---|---|---|---|
+| 1 | Hex grid & math | `spec/hex_spec.md` | T-HEX-01..07 | 1 |
+| 2 | Data tables (units/terrain/effectiveness) | `spec/data_spec.md` | T-DATA-01..04, 06 | 1 |
+| 3 | Movement & pathfinding | `spec/move_spec.md` | T-MOVE-01..06 | 1 |
+| 4 | Capture & Fame economy | `spec/economy_spec.md` | T-FAME-01..09 | **3** |
 
 Row 3 depends on rows 1 and 2 and the gate depends on them the same way: `test_move.cpp`
 links `Hex.cpp` and `Data.cpp` and takes its move costs from `data/terrain.csv` and its
@@ -93,6 +96,38 @@ than letting a green run imply full coverage:
 
 Verified on **clang++ and MSVC**, 19/19 both times — which is the content of T-HEX-07's
 "fixed across runs and compilers", not a claim about it.
+
+### Row 4 — Capture & Fame economy (week 3's row, built early)
+
+The next link on §4.11's critical path `1 → 3 → 4 → 5 → 6/8`, and the row rows 5, 6
+and 8 all queue behind. §4.4 schedules it in **week 3**, not week 1 — it is ahead of
+the milestone table, not part of week 1's debt. `spec/economy_spec.md`, **T-FAME-01..09, 9/9** under both
+compilers.
+
+**Four of its nine invariants encode a *ruled* question**, and the gate asserts the
+ruling rather than the intuition it overturned:
+
+| Ruling | What the gate refuses |
+|---|---|
+| **Q8** | income on turn 1 — turn-1 buying power is starting Fame **alone** |
+| **Q8** | refunding a queued build — Fame commits at queue time, not spawn time |
+| **Q4** | capture progress transferring between units, or surviving an interruption |
+| **Q5** | a flag kill stacking with the ordinary award — a flag Tank pays 500, not 650 |
+| **Q6** | an undamaged-strike bonus — cut, not priced, so its **absence** is asserted |
+
+The pass-1 hallucination is the one an author reaches *without* those rulings in
+front of them: income accrues on turn 1 (every strategy game pays you on turn 1),
+and passive income also credits `fameCombat` (Fame is one pool, so surely every
+source touches every counter). It is blocked on **T-FAME-01, T-FAME-02 and
+T-FAME-08** — the third because crediting income to the combat counter corrupts the
+tally as well. The second bug matters more than it looks: `fameCombat` is §2.8's
+tiebreak sort key, so paying it passively lets a side that never fought win
+criterion 1 and makes the mutual-passivity guard unreachable.
+
+Row 4 owns the economy, **not the turn**. It never advances a turn and never decides
+whose turn it is — the turn number arrives as an argument, which is how T-FAME-02's
+no-accrual-on-turn-1 gets asserted without owning a counter. That is what let row 4
+land before row 5.
 
 ### The other half of week 1 — "Playable via debug commands"
 
@@ -125,8 +160,25 @@ because it gates a tool, not a rules system: it is not a §4.7 stub, it flips no
 row, and it moves no count in the GDD. Every check compares the driver's output against a
 direct module call rather than a hardcoded expectation.
 
-**What it deliberately is not:** there are no turns, no capture, no Fame, no production,
-no AI and no scenario file, because rows 4–8 hold no code. It is a debug tool, not a match.
+Row 4 is reachable from the same surface — `objectives`, `fame`, `turn <n>`,
+`income <side>`, `build <side> <Type> <col> <row>`, `capture <side>`, and a kill award
+paid through `attack`:
+
+```
+> capture 0            side 0 captured (0,0)
+> turn 1 / income 0    accrued 0 on turn 1 (no accrual on turn 1 — Q8)
+> turn 2 / income 0    accrued 100 -> fameTotal 300
+> build 0 Infantry 0 0 100 Fame committed at queue time, not refundable (Q8)
+                       spawned #2 at (1,0)      <- factory hex occupied: the
+                                                   adjacent-free fallback, T-FAME-04
+```
+
+`turn <n>` is a **debug setter, not a turn structure** — it exists only to feed
+T-FAME-02's argument. The driver still contains no rules: every line above is a call
+into `Economy.h`.
+
+**What it deliberately is not:** there is no turn loop, no AI and no scenario file,
+because rows 5–8 hold no code. It is a debug tool, not a match.
 
 ## Run it
 
@@ -175,6 +227,7 @@ spec/combat_spec_addendum.md  contract extension: type-effectiveness (eff) + rep
 spec/hex_spec.md         §4.11 row 1 contract — coords, neighbors, canonical order
 spec/data_spec.md        §4.11 row 2 contract — the §4.8 schemas, hard-fail rule
 spec/move_spec.md        §4.11 row 3 contract — Dijkstra, occupancy, the tie-break
+spec/economy_spec.md     §4.11 row 4 contract — income, build, capture, awards
 spec/driver_spec.md      the debug-command driver — no rules of its own
 data/                    the canonical CSVs (§4.8): units, terrain, effectiveness
 crew/agents.py           the 3 agents (role/goal/backstory + tools + Claude LLM)
@@ -197,7 +250,7 @@ provenance should cite the `cpp_reference/` path, which resolves in the tree.
 ## Outputs (in `build/` after a run)
 
 - `Combat.cpp` — the authored, gate-passing implementation
-- `Hex.cpp`, `Data.cpp`, `Move.cpp` — the week-1 modules (§4.11 rows 1-3)
+- `Hex.cpp`, `Data.cpp`, `Move.cpp`, `Economy.cpp` — the rules modules (§4.11 rows 1-4)
 - `Driver.cpp` + `stratocracy_debug` — the debug-command REPL, week 1's playable artifact
 - `acceptance.json` — the Combat release record (Test Engineer only)
 - `acceptance_week1.json` — the rows 1-3 release record, including what it does **not**

@@ -37,9 +37,9 @@ ACCEPT = "acceptance.json"   # the release record — ONLY the Test Engineer wri
 # real compile + run. Each row gets its own runner so a failure is attributable to one
 # ledger row rather than to "week 1".
 # --------------------------------------------------------------------------- #
-WEEK1_FIXED = ("Hex.h", "Data.h", "Move.h", "Driver.h",
-               "test_hex.cpp", "test_data.cpp", "test_move.cpp", "test_driver.cpp",
-               "driver_main.cpp")
+WEEK1_FIXED = ("Hex.h", "Data.h", "Move.h", "Economy.h", "Driver.h",
+               "test_hex.cpp", "test_data.cpp", "test_move.cpp", "test_economy.cpp",
+               "test_driver.cpp", "driver_main.cpp")
 
 WEEK1_ROWS = {
     "hex": {
@@ -58,24 +58,30 @@ WEEK1_ROWS = {
         "sources": ["Move.cpp", "Hex.cpp", "Data.cpp", "Combat.cpp", "test_move.cpp"],
         "stem": "test_move_runner", "tests": "T-MOVE-01..06",
     },
+    "fame": {
+        "row": 4, "system": "Capture & Fame economy", "spec": "spec/economy_spec.md",
+        "impl": "Economy.cpp",
+        "sources": ["Economy.cpp", "Hex.cpp", "Data.cpp", "Combat.cpp", "test_economy.cpp"],
+        "stem": "test_economy_runner", "tests": "T-FAME-01..09",
+    },
     # Not a §4.7 stub and not a ledger row: the debug-command driver builds no rules
     # system, so its checks are named GATE-DRV-* rather than T-* and move no count in
     # the GDD. It closes §4.4 week 1's OTHER promise, "Playable via debug commands".
     "driver": {
         "row": None, "system": "Debug-command driver", "spec": "spec/driver_spec.md",
         "impl": "Driver.cpp",
-        "sources": ["Driver.cpp", "Move.cpp", "Hex.cpp", "Data.cpp", "Combat.cpp",
-                    "test_driver.cpp"],
+        "sources": ["Driver.cpp", "Move.cpp", "Hex.cpp", "Data.cpp", "Economy.cpp",
+                    "Combat.cpp", "test_driver.cpp"],
         "stem": "test_driver_runner", "tests": "GATE-DRV-01..07",
     },
 }
-WEEK1_ORDER = ("hex", "data", "move", "driver")  # §4.11 dependency order; driver last
+WEEK1_ORDER = ("hex", "data", "move", "fame", "driver")  # §4.11 dependency order; driver last
 WEEK1_ACCEPT = "acceptance_week1.json"  # the week-1 release record — Test Engineer only
 
 # The playable artifact itself — built from the same sources plus the REPL entry point.
 DRIVER_BINARY = "stratocracy_debug"
-DRIVER_SOURCES = ["Driver.cpp", "Move.cpp", "Hex.cpp", "Data.cpp", "Combat.cpp",
-                  "driver_main.cpp"]
+DRIVER_SOURCES = ["Driver.cpp", "Move.cpp", "Hex.cpp", "Data.cpp", "Economy.cpp",
+                  "Combat.cpp", "driver_main.cpp"]
 
 
 # --------------------------------------------------------------------------- #
@@ -212,25 +218,25 @@ def run_row_gate_fn(row_key: str) -> dict:
     """
     ensure_workspace()
     spec = WEEK1_ROWS[row_key]
+    label = f"row {spec['row']}" if spec["row"] is not None else "no row"
     missing = [s for s in spec["sources"] if not (BUILD / s).exists()]
     if missing:
         return {"row": spec["row"], "system": spec["system"], "tests": spec["tests"],
                 "compiled": False, "passed": False, "failures": [], "log": "",
-                "summary": f"missing source(s): {', '.join(missing)} — "
-                           "the Systems Engineer must author the implementation first"}
+                "summary": f"{label} ({spec['system']}) missing source(s): "
+                           f"{', '.join(missing)} — the Systems Engineer must author "
+                           "the implementation first"}
     ok, log, exe = _compile(spec["sources"], spec["stem"])
     if not ok:
         return {"row": spec["row"], "system": spec["system"], "tests": spec["tests"],
                 "compiled": False, "passed": False, "failures": [], "log": log,
-                "summary": f"row {spec['row']} compile FAILED"}
+                "summary": f"{label} ({spec['system']}) compile FAILED"}
     p = subprocess.run([exe, str(DATA)], capture_output=True, text=True,
                        encoding="utf-8", errors="replace", cwd=str(BUILD))
     out = p.stdout
     failures = [ln.split()[1] for ln in out.splitlines() if ln.startswith("FAIL")]
     passed = p.returncode == 0 and not failures
     tally = next((ln for ln in out.splitlines() if "passed" in ln), "").strip()
-    # The driver has no ledger row, so it is labelled by name rather than by number.
-    label = f"row {spec['row']}" if spec["row"] is not None else "no row"
     summary = (f"{label} ({spec['system']}) GATE PASS — {spec['tests']}"
                if passed else
                f"{label} ({spec['system']}) GATE BLOCK — failing: "
@@ -246,7 +252,8 @@ def run_week1_gate_fn() -> dict:
     passed = all(r["passed"] for r in rows)
     return {"rows": rows, "passed": passed,
             "summary": ("WEEK-1 GATE PASS — rows 1-3 (T-HEX-01..07, T-DATA-01..04+06, "
-                        "T-MOVE-01..06) + the debug driver (GATE-DRV-01..07)" if passed else
+                        "T-MOVE-01..06) + row 4 (T-FAME-01..09) + the debug driver "
+                        "(GATE-DRV-01..07)" if passed else
                         "WEEK-1 GATE BLOCK — " + "; ".join(
                             f"{r['system']}: {', '.join(r['failures']) or 'compile/run error'}"
                             for r in rows if not r["passed"]))}
