@@ -79,8 +79,9 @@ def run_offline(log) -> dict:
 
 
 def run_week1(log) -> dict:
-    """The same spec -> gate -> certify flow for GDD §4.11 rows 1-4 (§4.4 week 1,
-    plus row 4, which week 1 does not owe but which the critical path runs through).
+    """The same spec -> gate -> certify flow for GDD §4.11 rows 1-5 (§4.4 week 1,
+    plus rows 4 and 5, which week 1 does not owe but which the critical path runs
+    through).
 
     Rows 1 and 2 are authored and gated first because row 3 depends on both (§4.11's
     Depends-on column). Row 3 then repeats the Combat demonstration with the movement
@@ -89,7 +90,7 @@ def run_week1(log) -> dict:
     it promises "the real move set, not an estimate".
     """
     log("\n" + "=" * 78)
-    log("WEEK 1 — GDD §4.11 rows 1-4 + the debug-command driver")
+    log("WEEK 1 — GDD §4.11 rows 1-5 + the debug-command driver")
     log("=" * 78 + "\n")
 
     # Combat is a PREREQUISITE, not a work item (§4.11: "green at 5ffa8d6 and are
@@ -199,6 +200,44 @@ def run_week1(log) -> dict:
         return {"status": "error", "gate_passed": False,
                 "failures_caught": f1.get("failures", [])}
 
+    # --- row 5: the critical path's sole next link, and the first row to own a turn
+    log("\n[Director -> Systems Engineer] spec/turn_spec.md handed over (row 5 — Turn "
+        "loop & win/tiebreak). Rows 3 and 4 DECLINED the turn — row 4 takes the turn "
+        "number as an argument — so every deferred turn-ownership question is "
+        "concentrated here. Four invariants encode §2.8's tiebreak apparatus exactly.")
+    log(tools.write_module_impl_fn("turn", tools.read_reference("Turn.buggy.cpp")))
+    log("[Systems Engineer] pass 1 authored — the cap tiebreak is a plain lexicographic "
+        "comparison (both sides on zero simply ties at key 1 and falls through to "
+        "objectives held), and the result tier grades by the size of the winning "
+        "margin, the way nearly every strategy game reports a win.\n")
+
+    t1 = tools.run_row_gate_fn("turn")
+    log("[Systems Engineer · self-test] " + t1["summary"])
+    for line in t1["log"].splitlines():
+        log("    " + line)
+    if t1["passed"]:
+        log("[note] pass 1 unexpectedly passed — the bundled 'buggy' turn loop should "
+            "fail T-TURN-05 and T-TURN-07; continuing anyway.\n")
+    else:
+        log(f"\n[Systems Engineer · self-test] BLOCK — {', '.join(t1['failures'])} caught it. "
+            "§2.8 puts a mutual-passivity guard BEFORE the comparison precisely because "
+            "a fall-through re-crowns the turtle §1.5 #1 closed, and T-TURN-06 fails "
+            "downstream of the same omission; and §2.8 makes the tiers categorical so a "
+            "capped grind's tally can never outrank a flag kill (§1.5 #5). Fixing "
+            "before hand-off.\n")
+
+    log("[Systems Engineer] re-fed §2.8's procedure — one guard, one three-key "
+        "comparison, one grade; restoring the guard and making the tier categorical.")
+    log(tools.write_module_impl_fn("turn", tools.read_reference("Turn.good.cpp")))
+    t2 = tools.run_row_gate_fn("turn")
+    log("[Systems Engineer · self-test] " + t2["summary"])
+    for line in t2["log"].splitlines():
+        log("    " + line)
+    if not t2["passed"]:
+        log("[stop] row 5 pass 2 did not pass — see the failures above.")
+        return {"status": "error", "gate_passed": False,
+                "failures_caught": t1.get("failures", [])}
+
     # --- the debug-command driver: week 1's OTHER promise ------------------------
     log("\n[Director -> Systems Engineer] spec/driver_spec.md handed over. §4.4 week 1 "
         "promises rows 1-3 AND 'Playable via debug commands'; the rows are green and "
@@ -206,9 +245,10 @@ def run_week1(log) -> dict:
     log(tools.write_module_impl_fn("driver", tools.read_reference("Driver.good.cpp")))
     log("[Systems Engineer] authored — the driver contains NO RULES: reach/path/move "
         "delegate to Move.h, damage and counters to Combat.h, stats to Data.h, "
-        "distance and adjacency to Hex.h, and now capture/income/build to Economy.h. "
-        "Where rows 5-8 would be needed — turn order, AI, scenario files — it "
-        "refuses rather than deciding.")
+        "distance and adjacency to Hex.h, capture/income/build to Economy.h, and now "
+        "alternation, act flags, start-of-turn repair and the §2.8 result to Turn.h. "
+        "Where rows 6-8 would be needed — AI, scenario files — it refuses rather "
+        "than deciding.")
     d = tools.run_row_gate_fn("driver")
     log("[Systems Engineer · self-test] " + d["summary"])
     for line in d["log"].splitlines():
@@ -233,8 +273,8 @@ def run_week1(log) -> dict:
     for line in cert["record"]["not_covered"]:
         log("[Test Engineer] NOT covered by this record: " + line)
     log("[Test Engineer] Q29 refuses a ledger flip on a partial acceptance set, so "
-        "row 2 stays pending until the in-editor T-DATA-05 pass runs. Rows 1 and 3 "
-        "have no in-editor half and are complete at this commit.")
+        "row 2 stays pending until the in-editor T-DATA-05 pass runs. Rows 1, 3, 4 "
+        "and 5 have no in-editor half and are complete at this commit.")
 
     return {"status": "ok", "gate_passed": cert["accepted"],
             "failures_caught": m1.get("failures", [])}

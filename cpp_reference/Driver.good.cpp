@@ -1,9 +1,10 @@
 // Stratocracy — debug-command driver implementation (§4.4 week 1).
 //
 // CONTAINS NO RULES. Every rule decision below is a call into Hex.h, Data.h,
-// Move.h or Combat.h. Where a question is not answerable by one of those four --
-// ownership, whose turn it is, what a scenario file looks like -- the command is
-// refused rather than decided, because rows 4-8 hold no code (spec/driver_spec.md).
+// Move.h, Combat.h, Economy.h or Turn.h. Where a question is not answerable by one
+// of those six -- what a scenario file looks like, what the AI would do -- the
+// command is refused rather than decided, because rows 6-8 hold no code
+// (spec/driver_spec.md).
 #include "Driver.h"
 
 #include <algorithm>
@@ -226,6 +227,11 @@ bool loadFixture(Session& s, const std::string& name, std::string& err) {
         initSide(next.economy, 1, 200);
         next.turnNumber = 1;
 
+        // Row 5. A fresh board is a fresh sandbox: no match is running until `match`
+        // starts one, and no unit is designated a flag until `flag` names one.
+        next.match = TurnState();
+        for (int i = 0; i < SIDE_COUNT; ++i) next.flagUnit[i] = -1;
+
         s = next;
         return true;
     }
@@ -239,6 +245,44 @@ bool sessionInit(Session& s, const std::string& dataDir, std::string& err) {
     if (!loadTerrain(dataDir + "/terrain.csv", s.terrainDefs, err)) return false;
     if (!loadEffectiveness(dataDir + "/effectiveness.csv", eff, err)) return false;
     return true;
+}
+
+int currentTurn(const Session& s) {
+    // Turn.h owns the number the moment a match exists; before that the debug setter
+    // is all there is. One expression, so no second turn counter can drift.
+    return s.match.running ? s.match.turnNumber : s.turnNumber;
+}
+
+BoardSnapshot snapshotOf(const Session& s) {
+    BoardSnapshot b;
+    for (int i = 0; i < SIDE_COUNT; ++i) {
+        b.side[i].fameCombat = s.economy.side[i].fameCombat;   // Economy.h's counter
+        b.side[i].objectivesHeld = 0;
+        b.side[i].survivingHp = 0;
+        b.side[i].factoriesHeld = 0;
+        // No designation -> the flag is not on the board to lose, so the match
+        // cannot end that way. The driver never invents one.
+        b.side[i].flagAlive =
+            (s.flagUnit[i] < 0) || (findUnitById(s, s.flagUnit[i]) != nullptr);
+    }
+    for (const Objective& o : s.economy.objectives) {
+        if (o.owner < 0 || o.owner >= SIDE_COUNT) continue;
+        b.side[o.owner].objectivesHeld += 1;                   // factories AND towns
+        // Which tile is a factory is the TABLE's answer, not the driver's: the same
+        // IsSpawnPoint column Economy.h::queueBuild reads to find a build point.
+        if (o.terrainIndex >= 0 &&
+            static_cast<std::size_t>(o.terrainIndex) < s.terrainDefs.size() &&
+            s.terrainDefs[o.terrainIndex].isSpawnPoint) {
+            b.side[o.owner].factoriesHeld += 1;
+        }
+    }
+    for (const Objective& o : s.economy.objectives)
+        if (o.terrainIndex >= 0 &&
+            static_cast<std::size_t>(o.terrainIndex) < s.terrainDefs.size() &&
+            s.terrainDefs[o.terrainIndex].isSpawnPoint) b.factoryTotal += 1;
+    for (const DriverUnit& u : s.units)
+        if (u.side >= 0 && u.side < SIDE_COUNT) b.side[u.side].survivingHp += u.hp;
+    return b;
 }
 
 std::string stateHash(const Session& s) {
@@ -288,6 +332,10 @@ std::string stateHash(const Session& s) {
             acc += "b" + num(c) + ":" + num(r) + ":" + num(p.side) + ":" + num(p.defIndex) + ";";
         }
     }
+    // Row 5 state is likewise part of what a refused command must not change, and
+    // Turn.h supplies its own digest rather than the driver re-deriving one.
+    acc += "|match" + stateDigest(s.match) + "|";
+    for (int i = 0; i < SIDE_COUNT; ++i) acc += "f" + num(s.flagUnit[i]) + ";";
     unsigned long long h = 1469598103934665603ULL;          // FNV-1a, 64-bit
     for (char c : acc) { h ^= static_cast<unsigned char>(c); h *= 1099511628211ULL; }
     std::string hex;
@@ -323,6 +371,55 @@ void renderMap(const Session& s, std::vector<std::string>& out) {
     out.push_back(cols);
 }
 
+std::string describe(const MatchResult& r) {
+    std::string line = std::string("match over: ") + tierName(r.tier) +
+                       " (" + causeName(r.cause) + ")";
+    if (r.winner != SIDE_NONE) line += " — side " + num(r.winner) + " wins";
+    if (r.decidedByKey != 0)   line += ", decided at tiebreak key " + num(r.decidedByKey);
+    return line;
+}
+
+// Starts the active side's turn: Turn.h's beginTurn, then Turn.h's start-of-turn
+// repair moment. The amounts come from the verified repairAmount through Turn.h; the
+// driver applies the HP it is handed and computes none of it.
+void openActiveTurn(Session& s, std::vector<std::string>& out) {
+    const BoardSnapshot snap = snapshotOf(s);
+    const MatchResult r = beginTurn(s.match, snap);
+    if (r.tier != ResultTier::InProgress) { out.push_back(describe(r)); return; }
+
+    std::vector<RepairSubject> subjects;
+    for (const DriverUnit& u : s.units) {
+        RepairSubject rs;
+        rs.unitId = u.id;
+        rs.side   = u.side;
+        rs.unit   = combatUnit(s, u);
+        const Objective* o = findObjective(s.economy, u.hex);
+        rs.onOwnedObjective = (o != nullptr && o->owner == u.side);   // Economy.h owns it
+        rs.enemyAdjacent    = enemyAdjacent(s, u);
+        subjects.push_back(rs);
+    }
+    const std::vector<RepairApplied> healed = applyStartOfTurnRepair(s.match, subjects);
+    for (const RepairApplied& a : healed) {
+        if (a.amount <= 0) continue;
+        DriverUnit* u = mutableUnitById(s, a.unitId);
+        if (u == nullptr) continue;
+        u->hp += a.amount;
+        out.push_back("  repaired #" + num(a.unitId) + " +" + num(a.amount) +
+                      " -> hp " + num(u->hp));
+    }
+    out.push_back("turn " + num(s.match.turnNumber) + "/" + num(s.match.turnCap) +
+                  " — side " + num(s.match.activeSide) + " to move");
+}
+
+// Alternation is Turn.h's, so the driver reads `activeSide` and refuses; it decides
+// nothing about whose turn it is.
+bool wrongSideForTurn(const Session& s, int side, std::vector<std::string>& out) {
+    if (!s.match.running || side == s.match.activeSide) return false;
+    out.push_back("refused: side " + num(side) + " is not the active side (side " +
+                  num(s.match.activeSide) + " is)");
+    return true;
+}
+
 } // namespace
 
 bool execute(Session& s, const std::string& line, std::vector<std::string>& out) {
@@ -339,8 +436,12 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
         out.push_back("forecast <atk> <def> | attack <atk> <def> | repair <id> <owned 0|1>");
         out.push_back("row 4: fame | objectives | turn <n> | income <side> |");
         out.push_back("       build <side> <Type> <col> <row> | capture <side>");
-        out.push_back("NOTE: no turn loop, no AI, no scenario file -- rows 5-8 hold no");
-        out.push_back("code. 'turn <n>' is a debug setter, not a turn structure.");
+        out.push_back("row 5: match <firstSide> <turnCap> | endturn | standings |");
+        out.push_back("       result | flag <side> <id>");
+        out.push_back("NOTE: no AI and no scenario file -- rows 6-8 hold no code. With no");
+        out.push_back("match running the board is a free sandbox and 'turn <n>' is a debug");
+        out.push_back("setter; 'match' hands the turn number to the turn loop, which then");
+        out.push_back("refuses the setter. 'flag' is a debug designation, not scenario data.");
         return true;
     }
 
@@ -480,6 +581,12 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
             desc += "(" + num(c) + "," + num(r) + ")";
         }
         if (cmd == "path") { out.push_back("cost " + num(cost) + ": " + desc); return true; }
+        // Row 5: whether this unit may act at all is Turn.h's answer. Asked AFTER the
+        // route is known and BEFORE anything moves, so a refusal changes nothing.
+        if (s.match.running) {
+            std::string e;
+            if (!markActed(s.match, id, u->side, e)) { out.push_back("refused: " + e); return true; }
+        }
         mutableUnitById(s, id)->hex = goal;
         out.push_back("#" + num(id) + " moved, cost " + num(cost) + ": " + desc);
         return true;
@@ -502,6 +609,13 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
                 : std::string("  counter: none"));
             return true;
         }
+        // Row 5: same discipline as `move` -- the outcome is already computed, so
+        // Turn.h's refusal lands before any HP changes.
+        if (s.match.running) {
+            std::string e;
+            if (!markActed(s.match, a, findUnitById(s, a)->side, e)) {
+                out.push_back("refused: " + e); return true; }
+        }
         // Resolution applies exactly what the forecast above reported (GATE-DRV-03).
         const int atkSide = findUnitById(s, a)->side;
         const int defSide = findUnitById(s, d)->side;
@@ -510,17 +624,27 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
         if (o.defenderDies) {
             s.units.erase(std::remove_if(s.units.begin(), s.units.end(),
                            [d](const DriverUnit& u) { return u.id == d; }), s.units.end());
-            // Row 4: the kill award. Economy.h decides the amount; the flag flag is
-            // false because no unit is a flag until Stub 7's `isFlag` placement field
-            // exists (row 7, unbuilt) -- the driver does not invent one.
-            awardKill(s.economy, atkSide, s.unitDefs[defDef], false);
+            // Row 4: the kill award. Economy.h decides the amount. Whether the victim
+            // was a flag now has an answer -- the `flag` command's debug designation,
+            // still standing in for Stub 7's `isFlag` (row 7, unbuilt). Undesignated
+            // sides pass false, exactly as before.
+            const bool victimIsFlag =
+                (defSide >= 0 && defSide < SIDE_COUNT && s.flagUnit[defSide] == d);
+            awardKill(s.economy, atkSide, s.unitDefs[defDef], victimIsFlag);
             out.push_back(defName + " #" + num(d) + " destroyed — side " + num(atkSide) +
-                          " earns " + num(killAward(s.unitDefs[defDef], false)) +
-                          " Fame (half cost, Q5) -> fameCombat " +
+                          " earns " + num(killAward(s.unitDefs[defDef], victimIsFlag)) +
+                          (victimIsFlag ? " Fame (flat flag award, replaces the ordinary"
+                                          " one, Q5) -> fameCombat "
+                                        : " Fame (half cost, Q5) -> fameCombat ") +
                           num(s.economy.side[atkSide].fameCombat));
+            // Row 5: a downed flag ends the match at once. Turn.h decides that, and
+            // it is asked here rather than at the next turn boundary.
+            if (s.match.running) {
+                const MatchResult r = checkImmediate(s.match, snapshotOf(s));
+                if (r.tier != ResultTier::InProgress) out.push_back(describe(r));
+            }
             return true;
         }
-        (void)defSide;
         mutableUnitById(s, d)->hp -= o.damage;
         if (o.counterFires) {
             out.push_back(defName + " counters for " + num(o.counterDamage));
@@ -540,8 +664,11 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
         for (int i = 0; i < SIDE_COUNT; ++i)
             out.push_back("side " + num(i) + ": fameTotal " + num(s.economy.side[i].fameTotal) +
                           ", fameCombat " + num(s.economy.side[i].fameCombat));
-        out.push_back("turn " + num(s.turnNumber) +
-                      " (no turn loop exists — row 5 unbuilt; 'turn <n>' sets it)");
+        out.push_back(s.match.running
+            ? "turn " + num(s.match.turnNumber) + "/" + num(s.match.turnCap) +
+              " — side " + num(s.match.activeSide) + " to move"
+            : "turn " + num(s.turnNumber) +
+              " (no match running; 'turn <n>' sets the sandbox number)");
         return true;
     }
 
@@ -567,6 +694,11 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
         int n = 0;
         if (t.size() != 2 || !parseInt(t[1], n) || n < 1) {
             out.push_back("refused: usage: turn <n>, n >= 1"); return true; }
+        if (s.match.running) {
+            out.push_back("refused: a match is running — the turn loop owns the turn "
+                          "number; 'endturn' advances it");
+            return true;
+        }
         s.turnNumber = n;
         out.push_back("turn = " + num(n) + " (a debug setter, not a turn loop)");
         return true;
@@ -577,9 +709,11 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
         if (t.size() != 2 || !parseInt(t[1], side)) {
             out.push_back("refused: usage: income <side>"); return true; }
         if (side < 0 || side >= SIDE_COUNT) { out.push_back("refused: side must be 0 or 1"); return true; }
-        const int gained = accrueIncome(s.economy, s.terrainDefs, side, s.turnNumber);
+        if (wrongSideForTurn(s, side, out)) return true;
+        const int turn = currentTurn(s);
+        const int gained = accrueIncome(s.economy, s.terrainDefs, side, turn);
         out.push_back("side " + num(side) + " accrued " + num(gained) + " on turn " +
-                      num(s.turnNumber) + (s.turnNumber <= 1 ? " (no accrual on turn 1 — Q8)" : "") +
+                      num(turn) + (turn <= 1 ? " (no accrual on turn 1 — Q8)" : "") +
                       " -> fameTotal " + num(s.economy.side[side].fameTotal));
         return true;
     }
@@ -592,6 +726,7 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
         for (std::size_t i = 0; i < s.unitDefs.size(); ++i)
             if (s.unitDefs[i].id == t[2]) defIndex = static_cast<int>(i);
         if (defIndex < 0) { out.push_back("refused: no unit type '" + t[2] + "'"); return true; }
+        if (wrongSideForTurn(s, side, out)) return true;
         const Hex factory = offsetToAxial(col, row);
         std::string e;
         if (!queueBuild(s.economy, s.unitDefs, s.terrainDefs, side, factory, defIndex, e)) {
@@ -622,6 +757,7 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
         if (t.size() != 2 || !parseInt(t[1], side)) {
             out.push_back("refused: usage: capture <side>"); return true; }
         if (side < 0 || side >= SIDE_COUNT) { out.push_back("refused: side must be 0 or 1"); return true; }
+        if (wrongSideForTurn(s, side, out)) return true;
         std::vector<CaptureOccupant> occ;
         for (const DriverUnit& u : s.units) {
             CaptureOccupant c;
@@ -636,6 +772,94 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
             axialToOffset(h, c, r);
             out.push_back("side " + num(side) + " captured (" + num(c) + "," + num(r) + ")");
         }
+        return true;
+    }
+
+    // --- row 5 surfaces. Every one of these delegates to Turn.h ----------------
+    if (cmd == "match") {
+        int first = 0, cap = 0;
+        if (t.size() != 3 || !parseInt(t[1], first) || !parseInt(t[2], cap)) {
+            out.push_back("refused: usage: match <firstSide> <turnCap>"); return true; }
+        std::string e;
+        // The cap is per-scenario data (Q7) and Turn.h refuses an unusable one rather
+        // than substituting a default, so no cap value lives in this file.
+        if (!initMatch(s.match, first, cap, e)) { out.push_back("refused: " + e); return true; }
+        out.push_back("match started — side " + num(first) + " moves first, cap " +
+                      num(cap) + " turns (scenario data, Q7)");
+        openActiveTurn(s, out);
+        return true;
+    }
+
+    if (cmd == "endturn") {
+        if (t.size() != 1) { out.push_back("refused: usage: endturn"); return true; }
+        if (!s.match.running) {
+            out.push_back("refused: no match is running — run 'match <firstSide> <turnCap>'");
+            return true;
+        }
+        const MatchResult r = endTurn(s.match, snapshotOf(s));
+        if (r.tier != ResultTier::InProgress) { out.push_back(describe(r)); return true; }
+        openActiveTurn(s, out);
+        return true;
+    }
+
+    if (cmd == "standings") {
+        const BoardSnapshot b = snapshotOf(s);
+        const int objectiveTotal = static_cast<int>(s.economy.objectives.size());
+        out.push_back(s.match.running
+            ? "turn " + num(s.match.turnNumber) + "/" + num(s.match.turnCap) +
+              " — side " + num(s.match.activeSide) + " to move"
+            : "turn " + num(currentTurn(s)) + " (no match running)");
+        // §2.11.4's three rows, in §2.8's order, because the scoreboard is a
+        // restatement of the tiebreak and not a second view of it.
+        auto row = [](const std::string& label, const std::string& a,
+                      const std::string& c) {
+            std::string line = "  " + label;
+            while (line.size() < 15) line += ' ';
+            line += a;
+            while (line.size() < 24) line += ' ';
+            return line + c;
+        };
+        out.push_back("               side 0   side 1");
+        out.push_back(row("Destroyed", num(b.side[0].fameCombat), num(b.side[1].fameCombat)));
+        out.push_back(row("Objectives",
+                          num(b.side[0].objectivesHeld) + "/" + num(objectiveTotal),
+                          num(b.side[1].objectivesHeld) + "/" + num(objectiveTotal)));
+        out.push_back(row("Unit HP", num(b.side[0].survivingHp), num(b.side[1].survivingHp)));
+        // The leader line is the same call the cap would make, so what is displayed
+        // during the match and what decides it cannot disagree.
+        const MatchResult lead = resolveAtCap(b);
+        if (lead.cause == ResultCause::PassivityGuard) out.push_back("  — no engagements —");
+        else if (lead.winner == SIDE_NONE)             out.push_back("  leader: none (all keys tied)");
+        else out.push_back("  leader: side " + num(lead.winner) + " at key " +
+                           num(lead.decidedByKey));
+        return true;
+    }
+
+    if (cmd == "result") {
+        const MatchResult& r = s.match.result;
+        if (r.tier != ResultTier::InProgress) { out.push_back(describe(r)); return true; }
+        if (!s.match.running) { out.push_back("no match has been played"); return true; }
+        out.push_back("in progress — turn " + num(s.match.turnNumber) + "/" +
+                      num(s.match.turnCap) + ", side " + num(s.match.activeSide) +
+                      " to move");
+        return true;
+    }
+
+    if (cmd == "flag") {
+        int side = 0, id = 0;
+        if (t.size() != 3 || !parseInt(t[1], side) || !parseInt(t[2], id)) {
+            out.push_back("refused: usage: flag <side> <id>"); return true; }
+        if (side < 0 || side >= SIDE_COUNT) { out.push_back("refused: side must be 0 or 1"); return true; }
+        const DriverUnit* u = findUnitById(s, id);
+        if (u == nullptr) { out.push_back("refused: no unit " + num(id)); return true; }
+        if (u->side != side) {
+            out.push_back("refused: #" + num(id) + " is on side " + num(u->side));
+            return true;
+        }
+        s.flagUnit[side] = id;
+        out.push_back("side " + num(side) + " flag = #" + num(id) +
+                      " (a debug designation; the scenario field that will carry it is "
+                      "Stub 7's isFlag, row 7 unbuilt, and Q10 is open on exactness)");
         return true;
     }
 

@@ -53,13 +53,13 @@ The type-effectiveness hook ships **neutral** (`effectiveness()` returns 1.0 for
 and the pre-existing combat numbers stay byte-identical. The offline run demonstrates it end to end:
 **pass 1 blocks on T-COMBAT-07 + T-REPAIR-03, pass 2 passes 17/17.**
 
-## §4.11 rows 1-4 (added after the Assignment-3 submission)
+## §4.11 rows 1-5 (added after the Assignment-3 submission)
 
 The Combat module above is one row of the GDD's §3 provenance ledger. **§4.4 week 1
 owes three more** — §4.11 rows 1-3 — and they are built here, through the same
-spec → author → gate → certify pipeline. **Row 4 is week 3's work** (§4.4: "Capture +
-production (§4.11 rows 4-5)"), delivered early because §4.11's critical path runs
-`1 → 3 → 4 → 5 → 6/8` and row 4 was the only unblocked link on it:
+spec → author → gate → certify pipeline. **Rows 4 and 5 are week 3's work** (§4.4:
+"Capture + production (§4.11 rows 4-5)"), delivered early because §4.11's critical
+path runs `1 → 3 → 4 → 5 → 6/8` and each was in turn the only unblocked link on it:
 
 | Row | System | Spec | Acceptance | §4.4 week |
 |---|---|---|---|---|
@@ -67,6 +67,7 @@ production (§4.11 rows 4-5)"), delivered early because §4.11's critical path r
 | 2 | Data tables (units/terrain/effectiveness) | `spec/data_spec.md` | T-DATA-01..04, 06 | 1 |
 | 3 | Movement & pathfinding | `spec/move_spec.md` | T-MOVE-01..06 | 1 |
 | 4 | Capture & Fame economy | `spec/economy_spec.md` | T-FAME-01..09 | **3** |
+| 5 | Turn loop & win/tiebreak | `spec/turn_spec.md` | T-TURN-01..09 | **3** |
 
 Row 3 depends on rows 1 and 2 and the gate depends on them the same way: `test_move.cpp`
 links `Hex.cpp` and `Data.cpp` and takes its move costs from `data/terrain.csv` and its
@@ -99,10 +100,9 @@ Verified on **clang++ and MSVC**, 19/19 both times — which is the content of T
 
 ### Row 4 — Capture & Fame economy (week 3's row, built early)
 
-The next link on §4.11's critical path `1 → 3 → 4 → 5 → 6/8`, and the row rows 5, 6
-and 8 all queue behind. §4.4 schedules it in **week 3**, not week 1 — it is ahead of
-the milestone table, not part of week 1's debt. `spec/economy_spec.md`, **T-FAME-01..09, 9/9** under both
-compilers.
+A link on §4.11's critical path `1 → 3 → 4 → 5 → 6/8`. §4.4 schedules it in **week 3**,
+not week 1 — it is ahead of the milestone table, not part of week 1's debt.
+`spec/economy_spec.md`, **T-FAME-01..09, 9/9** under both compilers.
 
 **Four of its nine invariants encode a *ruled* question**, and the gate asserts the
 ruling rather than the intuition it overturned:
@@ -129,6 +129,45 @@ whose turn it is — the turn number arrives as an argument, which is how T-FAME
 no-accrual-on-turn-1 gets asserted without owning a counter. That is what let row 4
 land before row 5.
 
+### Row 5 — Turn loop & win/tiebreak (the row that finally owns the turn)
+
+`spec/turn_spec.md`, **T-TURN-01..09, 9/9** under both compilers. Rows 3 and 4
+*declined* the turn, so every question they deferred — whose turn it is, which units
+may still act, when a turn starts, when the match is over — is concentrated here.
+
+**Four of its nine invariants are §2.8's resolution procedure**, which is one guard,
+one three-key comparison, and one grade:
+
+| ID | What it pins |
+|---|---|
+| **T-TURN-04** | the exact key order — combat Fame → objectives held → surviving HP → draw |
+| **T-TURN-05** | the mutual-passivity guard: both sides at zero combat Fame is an immediate draw, with **no** fall-through |
+| **T-TURN-06** | criterion 2 is reached only when both sides fought and tied — asserted over a sweep, not one fixture |
+| **T-TURN-07** | tiers are **categorical**: Decisive > Marginal > Draw, whatever the tallies |
+
+The pass-1 hallucination is the reading an author reaches *without* §2.8 in front of
+them: the tiebreak is a plain lexicographic comparison, so both sides on zero simply
+ties at key 1 and falls through to objectives held — and the tier grades by how big
+the winning margin was, the way nearly every strategy game reports a win. Both are
+the exploits §1.5 closed: the first restores the turtle win, the second lets a capped
+grind's tally outrank a flag kill. It is blocked on **T-TURN-05, T-TURN-06 and
+T-TURN-07**, and pass 2 passes 9/9.
+
+**The cap is data, not a number in the module.** Q7 ruled it per-scenario, held in
+Stub 7's `turnCap`; `initMatch` **refuses** a cap it cannot use rather than
+substituting a default, which is what makes "no literal 20 lives here" enforced
+instead of promised.
+
+**T-TURN-08 asserts one thing only** — that the loop calls the already-verified
+`repairAmount` at the right moment with the right board facts. Every expectation in
+it is a direct call into `Combat.h`; the heal values are green at `5ffa8d6` under
+T-REPAIR-01..07 and are not re-asserted.
+
+Like row 4, it owns no board: units, hexes and Fame stay with their modules and
+arrive as a caller-supplied `BoardSnapshot` — the same quantities §2.11.4's
+scoreboard already displays, because §2.8's tiebreak adds no new state, only an
+ordering over existing state.
+
 ### The other half of week 1 — "Playable via debug commands"
 
 §4.4's week-1 goal has two halves, and the row flips only closed one. The second is a
@@ -146,16 +185,18 @@ at distance 2: Artillery deals 5
 
 **The driver contains no rules.** Reach, path and move delegate to `Move.h`; damage and
 counter eligibility to `Combat.h`; every stat to `Data.h` over `data/*.csv`; distance and
-adjacency to `Hex.h`. Where an answer would need §4.11 rows 4–8 — ownership, whose turn it
-is, what a scenario file looks like — it **refuses the command instead of deciding it**.
-That is the whole design: a debug tool that decides anything becomes a second rules
-implementation, and then the gated modules are no longer what the game does.
+adjacency to `Hex.h`; capture, income and build to `Economy.h`; alternation, act flags,
+the start-of-turn moment and the §2.8 result to `Turn.h`. Where an answer would need
+§4.11 rows 6–8 — what the AI would do, what a scenario file looks like — it **refuses
+the command instead of deciding it**. That is the whole design: a debug tool that
+decides anything becomes a second rules implementation, and then the gated modules are
+no longer what the game does.
 
 `forecast` and `attack` call **one** computation, so §2.6's "the forecast the player sees
 is exactly what resolves" is structural rather than merely tested — **GATE-DRV-03** then
 asserts it anyway.
 
-Its suite is **GATE-DRV-01..07**, named like `GATE-DATA-HARDFAIL` rather than `T-*`
+Its suite is **GATE-DRV-01..09**, named like `GATE-DATA-HARDFAIL` rather than `T-*`
 because it gates a tool, not a rules system: it is not a §4.7 stub, it flips no §3 ledger
 row, and it moves no count in the GDD. Every check compares the driver's output against a
 direct module call rather than a hardcoded expectation.
@@ -173,12 +214,31 @@ paid through `attack`:
                                                    adjacent-free fallback, T-FAME-04
 ```
 
-`turn <n>` is a **debug setter, not a turn structure** — it exists only to feed
-T-FAME-02's argument. The driver still contains no rules: every line above is a call
-into `Economy.h`.
+Row 5 turns the same surface into a match — `match <firstSide> <turnCap>`, `endturn`,
+`standings`, `result`, `flag <side> <id>`:
 
-**What it deliberately is not:** there is no turn loop, no AI and no scenario file,
-because rows 5–8 hold no code. It is a debug tool, not a match.
+```
+> match 0 20           side 0 moves first, cap 20 turns (scenario data, Q7)
+                       turn 1/20 — side 0 to move
+> move 2 3 1           refused: side 1 is not the active side (side 0 is)
+> move 1 1 1           #1 moved ...
+> move 1 1 0           refused: unit 1 has already acted this turn
+> turn 9               refused: a match is running — the turn loop owns the number
+> standings            Destroyed / Objectives / Unit HP + the current leader
+> attack 1 2           ... destroyed — side 0 earns 500 Fame (flat flag award, Q5)
+                       match over: Decisive (FlagDestroyed) — side 0 wins
+```
+
+**With no match running the board stays a free sandbox** — either side may act and a
+unit may act twice — which is what `place`/`hp`/`remove` debugging needs, and why
+GATE-DRV-01..07 are unchanged by row 5. `turn <n>` is still the **debug setter** it
+always was, and applies only in that sandbox; once `match` runs, `Turn.h` owns the
+number. `flag <side> <id>` is a **debug designation** standing in for Stub 7's
+`isFlag` (row 7 unbuilt, Q10 open) — the human names the flag unit and the driver
+never picks one.
+
+**What it deliberately is not:** there is no AI and no scenario file, because rows 6–8
+hold no code. It is a debug tool with a real turn loop, not the game.
 
 ## Run it
 
@@ -186,7 +246,7 @@ because rows 5–8 hold no code. It is a debug tool, not a match.
 # Offline — no API key, no install; needs only a C++ compiler. Always runs.
 python run.py --offline
 
-# Just the week-1 rows (§4.11 rows 1-3) + the debug driver, skipping the combat crew:
+# Just the built rows (§4.11 rows 1-5) + the debug driver, skipping the combat crew:
 python run.py --week1
 
 # Then play it — the artifact §4.4 week 1 asks for:
@@ -228,6 +288,7 @@ spec/hex_spec.md         §4.11 row 1 contract — coords, neighbors, canonical 
 spec/data_spec.md        §4.11 row 2 contract — the §4.8 schemas, hard-fail rule
 spec/move_spec.md        §4.11 row 3 contract — Dijkstra, occupancy, the tie-break
 spec/economy_spec.md     §4.11 row 4 contract — income, build, capture, awards
+spec/turn_spec.md        §4.11 row 5 contract — alternation, repair moment, §2.8 result
 spec/driver_spec.md      the debug-command driver — no rules of its own
 data/                    the canonical CSVs (§4.8): units, terrain, effectiveness
 crew/agents.py           the 3 agents (role/goal/backstory + tools + Claude LLM)
@@ -250,10 +311,11 @@ provenance should cite the `cpp_reference/` path, which resolves in the tree.
 ## Outputs (in `build/` after a run)
 
 - `Combat.cpp` — the authored, gate-passing implementation
-- `Hex.cpp`, `Data.cpp`, `Move.cpp`, `Economy.cpp` — the rules modules (§4.11 rows 1-4)
+- `Hex.cpp`, `Data.cpp`, `Move.cpp`, `Economy.cpp`, `Turn.cpp` — the rules modules
+  (§4.11 rows 1-5)
 - `Driver.cpp` + `stratocracy_debug` — the debug-command REPL, week 1's playable artifact
 - `acceptance.json` — the Combat release record (Test Engineer only)
-- `acceptance_week1.json` — the rows 1-3 release record, including what it does **not**
+- `acceptance_week1.json` — the rows 1-5 release record, including what it does **not**
   cover (T-DATA-05, T-MOVE-07) so a green run cannot imply full coverage
 - `run_log.md` — full spec → gate → balance transcript (incl. both caught hallucinations)
 - `balance_report.md` — self-play duel table + which invariant caught the bug
@@ -266,9 +328,10 @@ commit and the gate result (`T-COMBAT-01..10 + T-REPAIR-01..07`), and the attrib
 demonstrated fact — the same gate now also backs the ledger's pending *Repair* and
 *Type-effectiveness* rows once a live run authors them.
 
-The week-1 rows extend that chain to **§4.4's first milestone**. *Hex grid & math* and
-*Movement & pathfinding* are complete at this commit — headless, no in-editor half, so
-their acceptance sets close entirely here. *Data tables* is **not**: T-DATA-05 lives in
-the editor, and Q29 requires the full acceptance set at one commit before a row flips.
-Reporting rows 1 and 3 as built and row 2 as still pending is the honest read of the
-ledger's own rules, and it is what `acceptance_week1.json` records.
+The week-1 rows extend that chain to **§4.4's first milestone**. *Hex grid & math*,
+*Movement & pathfinding*, *Capture & Fame economy* and *Turn loop & win/tiebreak* are
+complete at this commit — headless, no in-editor half, so their acceptance sets close
+entirely here. *Data tables* is **not**: T-DATA-05 lives in the editor, and Q29 requires
+the full acceptance set at one commit before a row flips. Reporting rows 1, 3, 4 and 5
+as built and row 2 as still pending is the honest read of the ledger's own rules, and it
+is what `acceptance_week1.json` records.

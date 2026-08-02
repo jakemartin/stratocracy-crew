@@ -1,4 +1,4 @@
-// Gate for the debug-command driver (GATE-DRV-01..07). See spec/driver_spec.md.
+// Gate for the debug-command driver (GATE-DRV-01..09). See spec/driver_spec.md.
 //
 // These are NOT GDD acceptance IDs and flip no §3 ledger row -- the driver builds no
 // rules system. They assert one property: that the driver decides nothing itself. So
@@ -248,6 +248,9 @@ int main(int argc, char** argv) {
             "attack 1 3", "place 2 Infantry 1 1", "place 0 Sniper 1 1",
             "place 0 Infantry 3 0", "hp 1 999", "repair 1 7", "dist 0 0 99 99",
             "reach 42", "remove 42", "fixture nope",
+            // row 5's surfaces refuse on the same terms
+            "match", "match 0", "match 0 0", "match 0 -1", "match 2 5",
+            "endturn", "flag", "flag 0 99", "flag 1 1", "flag 3 1",
         };
         for (const char* c : bad) {
             const std::string before = stateHash(t);
@@ -271,6 +274,7 @@ int main(int argc, char** argv) {
             "fixture river", "place 0 Infantry 0 2", "place 1 Tank 2 2",
             "reach 1", "path 1 1 2", "move 1 1 2", "forecast 1 2", "attack 1 2",
             "units", "map", "repair 2 1",
+            "match 0 3", "standings", "endturn", "endturn", "standings", "result",
         };
         std::vector<std::string> a, b;
         for (int pass = 0; pass < 2; ++pass) {
@@ -287,6 +291,113 @@ int main(int argc, char** argv) {
         else for (std::size_t i = 0; i < a.size(); ++i) if (a[i] != b[i]) ok07 = false;
     }
     check("GATE-DRV-07 determinism", ok07);
+
+    // --- GATE-DRV-08 ---------------------------------------------------------
+    // Turn ownership is Turn.h's. With no match running the board is the same free
+    // sandbox it was before row 5 -- which is why GATE-DRV-01..07 above are
+    // unaffected -- and once a match starts, every refusal the driver issues is one
+    // canAct/markActed has already decided.
+    bool ok08 = true;
+    {
+        Session t;
+        std::string e;
+        sessionInit(t, dir, e);
+        loadFixture(t, "open", e);
+        run(t, "place 0 Infantry 1 1");        // #1
+        run(t, "place 1 Tank 3 1");            // #2
+        if (t.match.running) ok08 = false;
+
+        // Sandbox: either side moves, and a unit moves twice, because nothing owns
+        // the turn yet.
+        if (!contains(run(t, "move 2 3 0"), "moved")) ok08 = false;
+        if (!contains(run(t, "move 2 3 1"), "moved")) ok08 = false;
+        if (!contains(run(t, "move 1 1 0"), "moved")) ok08 = false;
+
+        Session m = t;
+        if (!contains(run(m, "match 0 20"), "match started")) ok08 = false;
+        if (!m.match.running || m.match.activeSide != 0) ok08 = false;
+
+        // The inactive side is refused, and the refusal agrees with canAct.
+        if (canAct(m.match, 2, 1)) ok08 = false;
+        std::string before = stateHash(m);
+        if (!contains(run(m, "move 2 3 0"), "refused")) ok08 = false;
+        if (stateHash(m) != before) ok08 = false;
+
+        // The active side acts once, and only once.
+        if (!canAct(m.match, 1, 0)) ok08 = false;
+        if (!contains(run(m, "move 1 1 1"), "moved")) ok08 = false;
+        if (!hasActed(m.match, 1)) ok08 = false;
+        if (canAct(m.match, 1, 0)) ok08 = false;
+        before = stateHash(m);
+        if (!contains(run(m, "move 1 1 0"), "refused")) ok08 = false;
+        if (stateHash(m) != before) ok08 = false;
+
+        // The debug setter stands down while the loop owns the number.
+        before = stateHash(m);
+        if (!contains(run(m, "turn 5"), "refused")) ok08 = false;
+        if (stateHash(m) != before) ok08 = false;
+
+        // Alternation is read off Turn.h, and the economy commands follow the same
+        // activeSide rather than a second notion of whose turn it is.
+        run(m, "endturn");
+        if (m.match.activeSide != 1) ok08 = false;
+        if (!canAct(m.match, 2, 1)) ok08 = false;
+        if (canAct(m.match, 1, 0)) ok08 = false;
+        if (!contains(run(m, "income 0"), "refused")) ok08 = false;
+        if (contains(run(m, "income 1"), "refused")) ok08 = false;
+    }
+    check("GATE-DRV-08 turn-ownership-is-the-turn-modules", ok08);
+
+    // --- GATE-DRV-09 ---------------------------------------------------------
+    // What the driver displays and what the match records are the same module call:
+    // the standings leader is resolveAtCap on the live board, and the recorded
+    // result is resolveAtCap on the board the match ended on.
+    bool ok09 = true;
+    {
+        Session t;
+        std::string e;
+        sessionInit(t, dir, e);
+        loadFixture(t, "contested", e);
+        run(t, "place 0 Infantry 0 1");
+        run(t, "place 1 Infantry 6 1");
+        run(t, "match 0 2");
+
+        const MatchResult lead = resolveAtCap(snapshotOf(t));
+        const std::vector<std::string> st = run(t, "standings");
+        if (lead.cause == ResultCause::PassivityGuard) {
+            if (!contains(st, "no engagements")) ok09 = false;   // §2.11.4's row
+        } else if (!contains(st, "leader")) ok09 = false;
+        if (!contains(st, "turn " + std::to_string(t.match.turnNumber) + "/" +
+                          std::to_string(t.match.turnCap))) ok09 = false;
+
+        for (int i = 0; i < 4 && t.match.running; ++i) run(t, "endturn");
+        if (t.match.running) ok09 = false;
+        const MatchResult expect = resolveAtCap(snapshotOf(t));
+        if (t.match.result.tier != expect.tier) ok09 = false;
+        if (t.match.result.cause != expect.cause) ok09 = false;
+        if (t.match.result.winner != expect.winner) ok09 = false;
+        if (t.match.result.decidedByKey != expect.decidedByKey) ok09 = false;
+        if (!contains(run(t, "result"), std::string(tierName(expect.tier)))) ok09 = false;
+
+        // A designated flag ends the match at once, and NOT through the tiebreak.
+        Session f;
+        sessionInit(f, dir, e);
+        loadFixture(f, "open", e);
+        run(f, "place 0 Tank 1 1");            // #1
+        run(f, "place 1 Infantry 2 1");        // #2
+        run(f, "hp 2 1");                      // one hit will finish it
+        const UnitDef victim = *defOf(f, 2);   // captured before it leaves the board
+        if (!contains(run(f, "flag 1 2"), "debug designation")) ok09 = false;
+        run(f, "match 0 20");
+        if (!contains(run(f, "attack 1 2"), "match over")) ok09 = false;
+        if (f.match.result.cause != ResultCause::FlagDestroyed) ok09 = false;
+        if (f.match.result.tier != ResultTier::Decisive) ok09 = false;
+        if (f.match.result.winner != 0) ok09 = false;
+        if (f.match.result.decidedByKey != 0) ok09 = false;      // no key was read
+        // The flag award replaced the ordinary one (Q5), decided by Economy.h.
+        if (f.economy.side[0].fameCombat != killAward(victim, true)) ok09 = false;
+    }
+    check("GATE-DRV-09 standings-and-result-are-the-turn-modules", ok09);
 
     std::printf("\n%d/%d passed\n", g_total - g_fail, g_total);
     return g_fail == 0 ? 0 : 1;

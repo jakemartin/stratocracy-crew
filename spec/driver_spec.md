@@ -21,30 +21,38 @@ is already gated:
 | unit and terrain values | `Data.h` over `data/*.csv` | T-DATA-01..04, 06 |
 | what a unit can reach, and by which route | `Move.h` | T-MOVE-01..06 |
 | damage, counter eligibility, repair amount | `Combat.h` | T-COMBAT-01..10, T-REPAIR-01..07 |
+| capture, income, build cost and spawn, kill awards | `Economy.h` | T-FAME-01..09 |
+| alternation, act flags, the start-of-turn moment, the §2.8 result | `Turn.h` | T-TURN-01..09 |
 
-If a question is not answerable by one of those four, **the driver refuses the
+If a question is not answerable by one of those six, **the driver refuses the
 command** rather than deciding it. That is what keeps a debug tool from quietly
 becoming a second rules implementation — the failure §4.9's T-INT-03 exists to
-prevent one layer up, and the reason `GATE-DRV-01`, `-02` and `-05` compare the
-driver's output against direct module calls rather than against expected values.
+prevent one layer up, and the reason `GATE-DRV-01`, `-02`, `-05`, `-08` and `-09`
+compare the driver's output against direct module calls rather than against
+expected values.
 
 ## What it deliberately does NOT do
 
-§4.11 rows 4–8 hold no code, so the driver exposes none of it and says so:
+§4.11 rows 6–8 hold no code, so the driver exposes none of it and says so:
 
-- **No capture, no Fame, no production** (row 4). `repair` therefore takes
-  ownership as an **explicit argument** rather than reading it, because no
-  ownership model exists; `Combat.h::repairAmount` already takes it as a caller-
-  supplied board fact, so this is delegation, not invention.
-- **No turn loop, no victory, no tiebreak** (row 5). There is no turn, no side
-  whose turn it is, and no per-turn movement budget — each `move` is evaluated
-  against the unit's full `Move` from `data/units.csv`. Commands may be issued
-  for either side in any order. **This is a debug tool, not a match.**
 - **No AI** (row 6).
 - **No scenario file** (row 7). Boards come from built-in fixtures and from
   `place`/`remove` commands. The driver defines **no file format**, so nothing
   here pre-empts Stub 7 or the §4.10 save format.
 - **No UI** (row 8). Text in, text out.
+
+**Two things it holds that no module owns yet, and labels as such.** `flag <side>
+<id>` is a **debug designation** standing in for Stub 7's `isFlag` placement field
+(row 7, unbuilt; Q10 open on exactness) — the human names the flag unit and the
+driver never picks one, so an undesignated side simply has no flag to lose.
+`turn <n>` remains the **debug setter** it was before row 5, and applies only when
+no match is running; once `match` starts one, `Turn.h` owns the number and the
+setter is refused.
+
+**With no match running the board is a free sandbox**, exactly as it was before
+row 5: no side owns the turn, either side may act, and a unit may act repeatedly.
+That is deliberate — it is what `place`/`hp`/`remove` debugging needs — and it is
+why `GATE-DRV-01..07` are unchanged by row 5.
 
 ## Command set
 
@@ -63,6 +71,17 @@ move <id> <col> <row>                 execute the move along that route
 forecast <atkId> <defId>              predicted damage + whether a counter fires
 attack <atkId> <defId>                resolve it, apply damage and any counter
 repair <id> <owned 0|1>               apply repairAmount; ownership is an argument
+fame                                  fameTotal and fameCombat per side
+objectives                            every objective, its owner, income, progress
+turn <n>                              set the sandbox turn number (no match only)
+income <side>                         accrue start-of-turn income for a side
+build <side> <Type> <col> <row>       queue a build at a held factory, then spawn
+capture <side>                        evaluate holding for a side
+match <firstSide> <turnCap>           start a match; the turn loop takes over
+endturn                               end the active side's turn
+standings                             the §2.11.4 scoreboard rows + the leader
+result                                the recorded tier, cause and winner
+flag <side> <id>                      designate a side's flag unit (debug)
 quit                                  exit
 ```
 
@@ -94,6 +113,15 @@ This is the §4.7 convention: no authored or human-facing layer stores axial.
   session state hash unchanged and returns a reason; no partial application.
 - **GATE-DRV-07** — determinism: the same command sequence from the same fixture
   produces byte-identical output.
+- **GATE-DRV-08** — turn ownership is `Turn.h`'s: with no match running either
+  side moves freely and a unit may move twice; once a match runs, every refusal
+  the driver issues agrees with `canAct`/`markActed`, `activeSide` is read rather
+  than counted, and a refused action leaves the state hash unchanged.
+- **GATE-DRV-09** — `standings`' leader line is `resolveAtCap` on the live board
+  and the recorded result is `resolveAtCap` on the board the match ended on, so
+  what is displayed during a match and what decides it cannot disagree; a
+  designated flag's death ends the match through `checkImmediate`, with no
+  tiebreak key read.
 
 ## Determinism / constraints
 
@@ -102,5 +130,5 @@ Pure over its inputs; no RNG; no clock; no filesystem access except the
 
 ## Acceptance
 
-`GATE-DRV-01..07`. This suite gates a debug tool, not a rules system, and no §3
+`GATE-DRV-01..09`. This suite gates a debug tool, not a rules system, and no §3
 ledger row flips on it.

@@ -16,8 +16,9 @@ int main(int argc, char** argv) {
         return 1;                       // §4.8: a bad table is a hard failure
     }
 
-    std::cout << "Stratocracy debug driver — rows 1-4 + Combat/Repair, headless.\n"
-              << "No turn loop, no AI, no scenario file: rows 5-8 hold no code.\n"
+    std::cout << "Stratocracy debug driver — rows 1-5 + Combat/Repair, headless.\n"
+              << "No AI and no scenario file: rows 6-8 hold no code. With no match\n"
+              << "running the board is a free sandbox; 'match' starts a real turn loop.\n"
               << "'help' for commands, 'fixture list' for boards, 'quit' to exit.\n";
 
     std::string line;
