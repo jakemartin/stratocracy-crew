@@ -94,14 +94,51 @@ than letting a green run imply full coverage:
 Verified on **clang++ and MSVC**, 19/19 both times — which is the content of T-HEX-07's
 "fixed across runs and compilers", not a claim about it.
 
+### The other half of week 1 — "Playable via debug commands"
+
+§4.4's week-1 goal has two halves, and the row flips only closed one. The second is a
+**debug-command REPL** over the built modules — `spec/driver_spec.md`,
+`build/stratocracy_debug.exe`:
+
+```
+> fixture river
+> place 0 Artillery 0 1
+> place 1 Tank 2 1
+> forecast 1 2
+at distance 2: Artillery deals 5
+  counter: none
+```
+
+**The driver contains no rules.** Reach, path and move delegate to `Move.h`; damage and
+counter eligibility to `Combat.h`; every stat to `Data.h` over `data/*.csv`; distance and
+adjacency to `Hex.h`. Where an answer would need §4.11 rows 4–8 — ownership, whose turn it
+is, what a scenario file looks like — it **refuses the command instead of deciding it**.
+That is the whole design: a debug tool that decides anything becomes a second rules
+implementation, and then the gated modules are no longer what the game does.
+
+`forecast` and `attack` call **one** computation, so §2.6's "the forecast the player sees
+is exactly what resolves" is structural rather than merely tested — **GATE-DRV-03** then
+asserts it anyway.
+
+Its suite is **GATE-DRV-01..07**, named like `GATE-DATA-HARDFAIL` rather than `T-*`
+because it gates a tool, not a rules system: it is not a §4.7 stub, it flips no §3 ledger
+row, and it moves no count in the GDD. Every check compares the driver's output against a
+direct module call rather than a hardcoded expectation.
+
+**What it deliberately is not:** there are no turns, no capture, no Fame, no production,
+no AI and no scenario file, because rows 4–8 hold no code. It is a debug tool, not a match.
+
 ## Run it
 
 ```bash
 # Offline — no API key, no install; needs only a C++ compiler. Always runs.
 python run.py --offline
 
-# Just the week-1 rows (§4.11 rows 1-3), skipping the combat crew:
+# Just the week-1 rows (§4.11 rows 1-3) + the debug driver, skipping the combat crew:
 python run.py --week1
+
+# Then play it — the artifact §4.4 week 1 asks for:
+cd build && ./stratocracy_debug ../data     # 'help', 'fixture list', 'quit'
 
 # Live crew — CrewAI + Claude author the module for real:
 pip install -r requirements.txt
@@ -138,6 +175,7 @@ spec/combat_spec_addendum.md  contract extension: type-effectiveness (eff) + rep
 spec/hex_spec.md         §4.11 row 1 contract — coords, neighbors, canonical order
 spec/data_spec.md        §4.11 row 2 contract — the §4.8 schemas, hard-fail rule
 spec/move_spec.md        §4.11 row 3 contract — Dijkstra, occupancy, the tie-break
+spec/driver_spec.md      the debug-command driver — no rules of its own
 data/                    the canonical CSVs (§4.8): units, terrain, effectiveness
 crew/agents.py           the 3 agents (role/goal/backstory + tools + Claude LLM)
 crew/tasks.py            the 3 tasks, chained spec → implement → gate → balance
@@ -160,6 +198,7 @@ provenance should cite the `cpp_reference/` path, which resolves in the tree.
 
 - `Combat.cpp` — the authored, gate-passing implementation
 - `Hex.cpp`, `Data.cpp`, `Move.cpp` — the week-1 modules (§4.11 rows 1-3)
+- `Driver.cpp` + `stratocracy_debug` — the debug-command REPL, week 1's playable artifact
 - `acceptance.json` — the Combat release record (Test Engineer only)
 - `acceptance_week1.json` — the rows 1-3 release record, including what it does **not**
   cover (T-DATA-05, T-MOVE-07) so a green run cannot imply full coverage

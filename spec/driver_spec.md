@@ -1,0 +1,106 @@
+# SPEC: Debug-command driver  (Director → Systems Engineer)
+
+Game: **Stratocracy** — UE5.8 hex turn-based strategy. Headless (§4.1): **zero
+engine dependencies**, pure C++17, deterministic.
+
+This is **§4.4's week-1 goal "Playable via debug commands"**, the half of week 1
+that the §4.11 row flips did not close. It is **not** a §4.7 stub and **not** a
+§3 ledger row: it builds no rules system, so it has no acceptance IDs in the GDD
+and does not move the 69-ID count. Its own gate IDs are named `GATE-DRV-*` rather
+than `T-*`, following `GATE-DATA-HARDFAIL`, so no reader mistakes them for
+document-specified acceptance IDs.
+
+## The one binding constraint
+
+**The driver contains no rules.** Every rule decision delegates to a module that
+is already gated:
+
+| Decision | Delegated to | Gated by |
+|---|---|---|
+| adjacency, distance, bounds, canonical order | `Hex.h` | T-HEX-01..07 |
+| unit and terrain values | `Data.h` over `data/*.csv` | T-DATA-01..04, 06 |
+| what a unit can reach, and by which route | `Move.h` | T-MOVE-01..06 |
+| damage, counter eligibility, repair amount | `Combat.h` | T-COMBAT-01..10, T-REPAIR-01..07 |
+
+If a question is not answerable by one of those four, **the driver refuses the
+command** rather than deciding it. That is what keeps a debug tool from quietly
+becoming a second rules implementation — the failure §4.9's T-INT-03 exists to
+prevent one layer up, and the reason `GATE-DRV-01`, `-02` and `-05` compare the
+driver's output against direct module calls rather than against expected values.
+
+## What it deliberately does NOT do
+
+§4.11 rows 4–8 hold no code, so the driver exposes none of it and says so:
+
+- **No capture, no Fame, no production** (row 4). `repair` therefore takes
+  ownership as an **explicit argument** rather than reading it, because no
+  ownership model exists; `Combat.h::repairAmount` already takes it as a caller-
+  supplied board fact, so this is delegation, not invention.
+- **No turn loop, no victory, no tiebreak** (row 5). There is no turn, no side
+  whose turn it is, and no per-turn movement budget — each `move` is evaluated
+  against the unit's full `Move` from `data/units.csv`. Commands may be issued
+  for either side in any order. **This is a debug tool, not a match.**
+- **No AI** (row 6).
+- **No scenario file** (row 7). Boards come from built-in fixtures and from
+  `place`/`remove` commands. The driver defines **no file format**, so nothing
+  here pre-empts Stub 7 or the §4.10 save format.
+- **No UI** (row 8). Text in, text out.
+
+## Command set
+
+```
+help                                  list commands
+map                                   render terrain + unit positions
+units                                 id, side, type, hex, hp for every unit
+fixture <name>                        load a built-in board (fixture list = names)
+place <side> <Type> <col> <row>       add a unit (side 0|1; Type per data/units.csv)
+remove <id>                           delete a unit
+hp <id> <value>                       set current HP (debug: set up a wounded case)
+dist <c1> <r1> <c2> <r2>              hexDistance between two hexes
+reach <id>                            the T-MOVE-01 reachable set, with costs
+path <id> <col> <row>                 the cheapest route, without moving
+move <id> <col> <row>                 execute the move along that route
+forecast <atkId> <defId>              predicted damage + whether a counter fires
+attack <atkId> <defId>                resolve it, apply damage and any counter
+repair <id> <owned 0|1>               apply repairAmount; ownership is an argument
+quit                                  exit
+```
+
+`forecast` is §2.11.3's attack forecast at the text layer: it must predict
+**exactly** what `attack` then applies (`GATE-DRV-03`), because §2.6 promises
+"the forecast the player sees is exactly what resolves, with no hidden roll".
+
+Coordinates are **odd-r offset `(col, row)`** at the command surface — what a
+human reads off the rendered map — and are converted by `Hex.h`'s
+`offsetToAxial` on the way in. No axial coordinate is ever typed or printed.
+This is the §4.7 convention: no authored or human-facing layer stores axial.
+
+## Invariants (the merge gate)
+
+- **GATE-DRV-01** — `reach` equals `Move.h::reachable` called directly: same
+  hexes, same costs, same canonical order.
+- **GATE-DRV-02** — `move` relocates the unit to exactly `findPath`'s endpoint by
+  exactly its path, and updates occupancy; a refused move changes nothing.
+- **GATE-DRV-03** — **forecast equals resolution.** The damage `forecast`
+  predicts is the damage `attack` applies, and its counter prediction matches
+  what fires — for every legal attacker/defender pair on the fixture.
+- **GATE-DRV-04** — range: `attack` is refused unless `hexDistance` is inside the
+  attacker's `[rangeMin, rangeMax]`, and the counter fires only when
+  `defenderCanCounter` says so at that same distance.
+- **GATE-DRV-05** — no second source of truth: the terrain defense the driver
+  applies equals `Data.h`'s `defensePct` for that hex, and every distance it
+  reports equals `hexDistance`.
+- **GATE-DRV-06** — refusal safety: an illegal or malformed command leaves the
+  session state hash unchanged and returns a reason; no partial application.
+- **GATE-DRV-07** — determinism: the same command sequence from the same fixture
+  produces byte-identical output.
+
+## Determinism / constraints
+
+Pure over its inputs; no RNG; no clock; no filesystem access except the
+`data/*.csv` load at startup. Must compile with a plain C++17 compiler.
+
+## Acceptance
+
+`GATE-DRV-01..07`. This suite gates a debug tool, not a rules system, and no §3
+ledger row flips on it.

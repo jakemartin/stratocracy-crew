@@ -37,8 +37,9 @@ ACCEPT = "acceptance.json"   # the release record — ONLY the Test Engineer wri
 # real compile + run. Each row gets its own runner so a failure is attributable to one
 # ledger row rather than to "week 1".
 # --------------------------------------------------------------------------- #
-WEEK1_FIXED = ("Hex.h", "Data.h", "Move.h",
-               "test_hex.cpp", "test_data.cpp", "test_move.cpp")
+WEEK1_FIXED = ("Hex.h", "Data.h", "Move.h", "Driver.h",
+               "test_hex.cpp", "test_data.cpp", "test_move.cpp", "test_driver.cpp",
+               "driver_main.cpp")
 
 WEEK1_ROWS = {
     "hex": {
@@ -57,9 +58,24 @@ WEEK1_ROWS = {
         "sources": ["Move.cpp", "Hex.cpp", "Data.cpp", "Combat.cpp", "test_move.cpp"],
         "stem": "test_move_runner", "tests": "T-MOVE-01..06",
     },
+    # Not a §4.7 stub and not a ledger row: the debug-command driver builds no rules
+    # system, so its checks are named GATE-DRV-* rather than T-* and move no count in
+    # the GDD. It closes §4.4 week 1's OTHER promise, "Playable via debug commands".
+    "driver": {
+        "row": None, "system": "Debug-command driver", "spec": "spec/driver_spec.md",
+        "impl": "Driver.cpp",
+        "sources": ["Driver.cpp", "Move.cpp", "Hex.cpp", "Data.cpp", "Combat.cpp",
+                    "test_driver.cpp"],
+        "stem": "test_driver_runner", "tests": "GATE-DRV-01..07",
+    },
 }
-WEEK1_ORDER = ("hex", "data", "move")   # §4.11 dependency order: 3 needs 1 and 2
+WEEK1_ORDER = ("hex", "data", "move", "driver")  # §4.11 dependency order; driver last
 WEEK1_ACCEPT = "acceptance_week1.json"  # the week-1 release record — Test Engineer only
+
+# The playable artifact itself — built from the same sources plus the REPL entry point.
+DRIVER_BINARY = "stratocracy_debug"
+DRIVER_SOURCES = ["Driver.cpp", "Move.cpp", "Hex.cpp", "Data.cpp", "Combat.cpp",
+                  "driver_main.cpp"]
 
 
 # --------------------------------------------------------------------------- #
@@ -213,9 +229,11 @@ def run_row_gate_fn(row_key: str) -> dict:
     failures = [ln.split()[1] for ln in out.splitlines() if ln.startswith("FAIL")]
     passed = p.returncode == 0 and not failures
     tally = next((ln for ln in out.splitlines() if "passed" in ln), "").strip()
-    summary = (f"row {spec['row']} ({spec['system']}) GATE PASS — {spec['tests']}"
+    # The driver has no ledger row, so it is labelled by name rather than by number.
+    label = f"row {spec['row']}" if spec["row"] is not None else "no row"
+    summary = (f"{label} ({spec['system']}) GATE PASS — {spec['tests']}"
                if passed else
-               f"row {spec['row']} ({spec['system']}) GATE BLOCK — failing: "
+               f"{label} ({spec['system']}) GATE BLOCK — failing: "
                f"{', '.join(failures) or 'compile/run error'}")
     return {"row": spec["row"], "system": spec["system"], "tests": spec["tests"],
             "compiled": True, "passed": passed, "failures": failures,
@@ -228,10 +246,31 @@ def run_week1_gate_fn() -> dict:
     passed = all(r["passed"] for r in rows)
     return {"rows": rows, "passed": passed,
             "summary": ("WEEK-1 GATE PASS — rows 1-3 (T-HEX-01..07, T-DATA-01..04+06, "
-                        "T-MOVE-01..06)" if passed else
+                        "T-MOVE-01..06) + the debug driver (GATE-DRV-01..07)" if passed else
                         "WEEK-1 GATE BLOCK — " + "; ".join(
-                            f"row {r['row']}: {', '.join(r['failures']) or 'compile/run error'}"
+                            f"{r['system']}: {', '.join(r['failures']) or 'compile/run error'}"
                             for r in rows if not r["passed"]))}
+
+
+def build_driver_fn() -> dict:
+    """Compile the playable artifact itself — the debug-command REPL.
+
+    §4.4 week 1 promises two things: the rows, and "Playable via debug commands".
+    The gate above proves the driver decides nothing on its own; this produces the
+    binary a human actually types into, so the promise has an artifact behind it
+    rather than a passing test about one.
+    """
+    ensure_workspace()
+    missing = [s for s in DRIVER_SOURCES if not (BUILD / s).exists()]
+    if missing:
+        return {"built": False, "summary": f"missing source(s): {', '.join(missing)}",
+                "log": "", "exe": None}
+    ok, log, exe = _compile(DRIVER_SOURCES, DRIVER_BINARY)
+    if not ok:
+        return {"built": False, "summary": "driver compile FAILED", "log": log, "exe": None}
+    return {"built": True, "exe": exe, "log": "",
+            "summary": f"playable artifact built: build/{Path(exe).name} "
+                       f"(run it, then type 'help')"}
 
 
 def certify_week1_fn() -> dict:
@@ -262,6 +301,9 @@ def certify_week1_fn() -> dict:
             "EUnitType mirror). §4.11 marks it †; it is not headless and did not run.",
             "T-MOVE-07 — reserved and unwritten, blocked on the Q2 movement-class "
             "ruling (§4.7 Stub 3).",
+            "GATE-DRV-01..07 gate the debug-command driver, which is NOT a §4.7 stub "
+            "and NOT a §3 ledger row — it builds no rules system. They flip nothing "
+            "and are not GDD acceptance IDs.",
         ],
         "summary": r["summary"],
         "certified_by": "Test Engineer",

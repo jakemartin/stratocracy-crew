@@ -88,8 +88,18 @@ def run_week1(log) -> dict:
     it promises "the real move set, not an estimate".
     """
     log("\n" + "=" * 78)
-    log("WEEK 1 — GDD §4.11 rows 1-3 (hex grid & math, data tables, movement)")
+    log("WEEK 1 — GDD §4.11 rows 1-3 + the debug-command driver")
     log("=" * 78 + "\n")
+
+    # Combat is a PREREQUISITE, not a work item (§4.11: "green at 5ffa8d6 and are
+    # prerequisites"). Every week-1 target links it, so place it when the combat
+    # stage has not already authored it -- otherwise `--week1` on a clean tree
+    # fails to link and reports it as a compiler problem, which it is not.
+    if not (tools.BUILD / tools.IMPL).exists():
+        tools.ensure_workspace()
+        log(tools.write_combat_impl_fn(tools.read_reference("Combat.good.cpp")))
+        log("[Director] Combat placed as a prerequisite — green at 5ffa8d6, not a "
+            "work item for this week (§4.11).\n")
 
     # --- rows 1 and 2: the two with no dependencies -----------------------------
     for key, spec_file, note in (
@@ -150,6 +160,31 @@ def run_week1(log) -> dict:
         log("    " + line)
     if not m2["passed"]:
         log("[stop] pass 2 did not pass self-test — see the failures above.")
+        return {"status": "error", "gate_passed": False,
+                "failures_caught": m1.get("failures", [])}
+
+    # --- the debug-command driver: week 1's OTHER promise ------------------------
+    log("\n[Director -> Systems Engineer] spec/driver_spec.md handed over. §4.4 week 1 "
+        "promises rows 1-3 AND 'Playable via debug commands'; the rows are green and "
+        "the second half has no artifact yet.")
+    log(tools.write_module_impl_fn("driver", tools.read_reference("Driver.good.cpp")))
+    log("[Systems Engineer] authored — the driver contains NO RULES: reach/path/move "
+        "delegate to Move.h, damage and counters to Combat.h, stats to Data.h, "
+        "distance and adjacency to Hex.h. Where rows 4-8 would be needed — ownership, "
+        "turns, scenarios — it refuses rather than deciding.")
+    d = tools.run_row_gate_fn("driver")
+    log("[Systems Engineer · self-test] " + d["summary"])
+    for line in d["log"].splitlines():
+        log("    " + line)
+    if not d["passed"]:
+        log("[stop] the driver gate did not pass — see the failures above.")
+        return {"status": "error", "gate_passed": False,
+                "failures_caught": m1.get("failures", [])}
+
+    b = tools.build_driver_fn()
+    log("[Systems Engineer] " + b["summary"])
+    if not b["built"]:
+        log(b["log"])
         return {"status": "error", "gate_passed": False,
                 "failures_caught": m1.get("failures", [])}
 
