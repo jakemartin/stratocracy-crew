@@ -1,0 +1,8 @@
+Id,MoveCost,DefensePct,PassLand,PassAir,PassSea,Capturable,IncomeFame,IsSpawnPoint,IsRepairPoint
+Plains,1,0,true,true,false,false,0,false,false
+Woods,2,20,true,true,false,false,0,false,false
+Mountains,3,40,true,true,false,false,0,false,false
+Water,0,0,false,true,true,false,0,false,false
+Town,1,10,true,true,false,true,25,false,true
+Bridge,1,-10,true,true,false,false,0,false,false
+Factory,1,15,true,true,false,true,100,true,true

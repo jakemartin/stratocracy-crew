@@ -29,6 +29,17 @@ BUILD.mkdir(exist_ok=True)
 LOG_PATH = BUILD / "run_log.md"
 _lines: list[str] = []
 
+# The logs carry GDD notation — section marks, arrows, the cut-line dagger. When stdout
+# is a console Python picks a codepage that can render them; when it is a PIPE or a file
+# on Windows it falls back to cp1252 and a bare `print('→')` raises
+# UnicodeEncodeError, which took the whole run down with it. Redirected output is how
+# CI and `python run.py > log.txt` both work, so make the stream tolerant instead of
+# rationing the characters. run_log.md is written as UTF-8 either way.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:  # pragma: no cover — older/odd streams keep the default behaviour
+    pass
+
 
 def log(msg: str = "") -> None:
     print(msg)
@@ -72,6 +83,20 @@ def run_live() -> None:
 
     log("\n=== Final crew narrative (Balance Analyst) ===\n" + str(result))
 
+    run_week1_stage()
+
+
+def run_week1_stage() -> dict:
+    """GDD §4.11 rows 1-3 — the §4.4 week-1 deliverable.
+
+    Deterministic on both paths: the live CrewAI crew in crew/tasks.py is written
+    against the Combat spec only, so these three modules are authored from the bundled
+    references and gated by the same real compile+run. Anything else would report a
+    live authoring run that did not happen.
+    """
+    from crew.offline import run_week1 as _rw
+    return _rw(log)
+
 
 def run_offline() -> None:
     from crew.offline import run_offline as _ro
@@ -85,18 +110,25 @@ def run_offline() -> None:
         f"Gate passed: {res['gate_passed']} · hallucination caught by: "
         f"{', '.join(res['failures_caught'])}\n\n```\n" + b["log"] + "\n```\n",
         encoding="utf-8")
+    run_week1_stage()
 
 
 def main() -> int:
-    (BUILD / "acceptance.json").unlink(missing_ok=True)  # each run must re-earn acceptance
+    # Each run must re-earn both acceptance records; neither is ever inherited.
+    (BUILD / "acceptance.json").unlink(missing_ok=True)
+    (BUILD / "acceptance_week1.json").unlink(missing_ok=True)
     args = set(sys.argv[1:])
     force_offline = "--offline" in args
     force_online = "--online" in args
+    week1_only = "--week1" in args
     have_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
 
     header = ""
     try:
-        if force_online or (have_key and not force_offline):
+        if week1_only:
+            run_week1_stage()
+            header = "week 1 only (§4.11 rows 1-3)"
+        elif force_online or (have_key and not force_offline):
             try:
                 run_live()
                 header = "live CrewAI crew"
@@ -111,8 +143,13 @@ def main() -> int:
     finally:
         _flush_log(header or "run")
 
-    log(f"\nArtifacts in {BUILD}/ : Combat.cpp, test_combat.cpp, selfplay.cpp, "
-        "balance_report.md, run_log.md")
+    if week1_only:
+        log(f"\nArtifacts in {BUILD}/ : Hex.cpp, Data.cpp, Move.cpp, "
+            "acceptance_week1.json, run_log.md")
+    else:
+        log(f"\nArtifacts in {BUILD}/ : Combat.cpp, test_combat.cpp, selfplay.cpp, "
+            "balance_report.md, acceptance.json, Hex.cpp, Data.cpp, Move.cpp, "
+            "acceptance_week1.json, run_log.md")
     return 0
 
 

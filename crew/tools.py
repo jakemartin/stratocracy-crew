@@ -21,6 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 REF = ROOT / "cpp_reference"
 BUILD = ROOT / "build"
+DATA = ROOT / "data"         # the canonical CSVs (GDD §4.8) — authored once, read twice
 
 HEADER = "Combat.h"
 TEST = "test_combat.cpp"
@@ -28,14 +29,51 @@ SELFPLAY = "selfplay.cpp"
 IMPL = "Combat.cpp"          # the file the Systems Engineer authors
 ACCEPT = "acceptance.json"   # the release record — ONLY the Test Engineer writes this
 
+# --------------------------------------------------------------------------- #
+# Week 1 — GDD §4.11 rows 1-3, the three rows §4.4 week 1 owes.
+#
+# Same shape as Combat: Director-owned headers and test harnesses are FIXED (copied
+# from cpp_reference/), the implementation is authored into build/, and the gate is a
+# real compile + run. Each row gets its own runner so a failure is attributable to one
+# ledger row rather than to "week 1".
+# --------------------------------------------------------------------------- #
+WEEK1_FIXED = ("Hex.h", "Data.h", "Move.h",
+               "test_hex.cpp", "test_data.cpp", "test_move.cpp")
+
+WEEK1_ROWS = {
+    "hex": {
+        "row": 1, "system": "Hex grid & math", "spec": "spec/hex_spec.md",
+        "impl": "Hex.cpp", "sources": ["Hex.cpp", "Combat.cpp", "test_hex.cpp"],
+        "stem": "test_hex_runner", "tests": "T-HEX-01..07",
+    },
+    "data": {
+        "row": 2, "system": "Data tables (units/terrain)", "spec": "spec/data_spec.md",
+        "impl": "Data.cpp", "sources": ["Data.cpp", "Combat.cpp", "test_data.cpp"],
+        "stem": "test_data_runner", "tests": "T-DATA-01..04, 06",
+    },
+    "move": {
+        "row": 3, "system": "Movement & pathfinding", "spec": "spec/move_spec.md",
+        "impl": "Move.cpp",
+        "sources": ["Move.cpp", "Hex.cpp", "Data.cpp", "Combat.cpp", "test_move.cpp"],
+        "stem": "test_move_runner", "tests": "T-MOVE-01..06",
+    },
+}
+WEEK1_ORDER = ("hex", "data", "move")   # §4.11 dependency order: 3 needs 1 and 2
+WEEK1_ACCEPT = "acceptance_week1.json"  # the week-1 release record — Test Engineer only
+
 
 # --------------------------------------------------------------------------- #
 # workspace + compiler plumbing
 # --------------------------------------------------------------------------- #
 def ensure_workspace() -> Path:
-    """Create build/ and copy the fixed (non-authored) sources into it."""
+    """Create build/ and copy the fixed (non-authored) sources into it.
+
+    Fixed = Director-owned: the headers that declare the contract and the test
+    harnesses that assert it. Implementations are NOT copied here — they are authored
+    into build/ by write_*_impl_fn, which is what makes the gate a real check.
+    """
     BUILD.mkdir(exist_ok=True)
-    for f in (HEADER, TEST, SELFPLAY):
+    for f in (HEADER, TEST, SELFPLAY, *WEEK1_FIXED):
         shutil.copyfile(REF / f, BUILD / f)
     return BUILD
 
@@ -135,6 +173,104 @@ def certify_build_fn() -> dict:
     return {**r, "accepted": record["accepted"]}
 
 
+# --------------------------------------------------------------------------- #
+# Week 1 — §4.11 rows 1-3
+# --------------------------------------------------------------------------- #
+def write_module_impl_fn(row_key: str, cpp_source: str) -> str:
+    """Author one week-1 module into build/. Mirrors write_combat_impl_fn."""
+    if row_key not in WEEK1_ROWS:
+        return f"[Systems Engineer] unknown module '{row_key}'"
+    ensure_workspace()
+    spec = WEEK1_ROWS[row_key]
+    (BUILD / spec["impl"]).write_text(cpp_source, encoding="utf-8")
+    return (f"[Systems Engineer] wrote {len(cpp_source)} bytes to build/{spec['impl']} "
+            f"(row {spec['row']} — {spec['system']})")
+
+
+def run_row_gate_fn(row_key: str) -> dict:
+    """Compile one week-1 module + its harness, run it, parse PASS/FAIL.
+
+    The runner is executed with cwd=build/ and handed the absolute path to data/, so
+    the CSV-backed suites read the canonical tables (§4.8) wherever the gate is invoked
+    from, and any scratch files a suite writes stay inside build/.
+    """
+    ensure_workspace()
+    spec = WEEK1_ROWS[row_key]
+    missing = [s for s in spec["sources"] if not (BUILD / s).exists()]
+    if missing:
+        return {"row": spec["row"], "system": spec["system"], "tests": spec["tests"],
+                "compiled": False, "passed": False, "failures": [], "log": "",
+                "summary": f"missing source(s): {', '.join(missing)} — "
+                           "the Systems Engineer must author the implementation first"}
+    ok, log, exe = _compile(spec["sources"], spec["stem"])
+    if not ok:
+        return {"row": spec["row"], "system": spec["system"], "tests": spec["tests"],
+                "compiled": False, "passed": False, "failures": [], "log": log,
+                "summary": f"row {spec['row']} compile FAILED"}
+    p = subprocess.run([exe, str(DATA)], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", cwd=str(BUILD))
+    out = p.stdout
+    failures = [ln.split()[1] for ln in out.splitlines() if ln.startswith("FAIL")]
+    passed = p.returncode == 0 and not failures
+    tally = next((ln for ln in out.splitlines() if "passed" in ln), "").strip()
+    summary = (f"row {spec['row']} ({spec['system']}) GATE PASS — {spec['tests']}"
+               if passed else
+               f"row {spec['row']} ({spec['system']}) GATE BLOCK — failing: "
+               f"{', '.join(failures) or 'compile/run error'}")
+    return {"row": spec["row"], "system": spec["system"], "tests": spec["tests"],
+            "compiled": True, "passed": passed, "failures": failures,
+            "summary": f"{summary} ({tally})", "log": out.strip()}
+
+
+def run_week1_gate_fn() -> dict:
+    """Every week-1 row, in §4.11 dependency order. Dev-time self-testing."""
+    rows = [run_row_gate_fn(k) for k in WEEK1_ORDER]
+    passed = all(r["passed"] for r in rows)
+    return {"rows": rows, "passed": passed,
+            "summary": ("WEEK-1 GATE PASS — rows 1-3 (T-HEX-01..07, T-DATA-01..04+06, "
+                        "T-MOVE-01..06)" if passed else
+                        "WEEK-1 GATE BLOCK — " + "; ".join(
+                            f"row {r['row']}: {', '.join(r['failures']) or 'compile/run error'}"
+                            for r in rows if not r["passed"]))}
+
+
+def certify_week1_fn() -> dict:
+    """Test Engineer's release gate for §4.11 rows 1-3 — runs every invariant AND
+    writes build/acceptance_week1.json. The ONLY writer of that record.
+
+    The record states what it does NOT cover as well as what it does: T-DATA-05 is the
+    in-editor Unreal Automation half of row 2, marked † in §4.11, and no headless run
+    can assert it. Q29 refuses a ledger flip on a partial acceptance set, so row 2's
+    flip waits on the editor pass even when everything here is green.
+    """
+    r = run_week1_gate_fn()
+    record = {
+        "accepted": bool(r["passed"]),
+        "scope": "GDD §4.11 rows 1-3 (§4.4 week 1)",
+        "rows": [
+            {
+                "row": row["row"],
+                "system": row["system"],
+                "tests": row["tests"],
+                "passed": row["passed"],
+                "failures": row["failures"],
+            }
+            for row in r["rows"]
+        ],
+        "not_covered": [
+            "T-DATA-05 — in-editor Unreal Automation (DataTable import parity + "
+            "EUnitType mirror). §4.11 marks it †; it is not headless and did not run.",
+            "T-MOVE-07 — reserved and unwritten, blocked on the Q2 movement-class "
+            "ruling (§4.7 Stub 3).",
+        ],
+        "summary": r["summary"],
+        "certified_by": "Test Engineer",
+    }
+    ensure_workspace()
+    (BUILD / WEEK1_ACCEPT).write_text(json.dumps(record, indent=2), encoding="utf-8")
+    return {**r, "accepted": record["accepted"], "record": record}
+
+
 def run_self_play_fn() -> dict:
     ensure_workspace()
     # Hard dependency on the Test Engineer: no acceptance record -> refuse to run.
@@ -205,7 +341,26 @@ try:
         r = run_self_play_fn()
         return f"{r['summary']}\n\n{r['log']}"
 
+    @tool("run_week1_gate")
+    def run_week1_gate() -> str:
+        """Compile and run the acceptance suites for GDD §4.11 rows 1-3 (hex grid &
+        math, data tables, movement & pathfinding) — the three rows §4.4 week 1 owes.
+        Returns PASS only if T-HEX-01..07, T-DATA-01..04+06 and T-MOVE-01..06 all
+        hold, and names the failing IDs per row otherwise. Takes no arguments."""
+        r = run_week1_gate_fn()
+        return r["summary"] + "\n\n" + "\n\n".join(row["log"] for row in r["rows"])
+
+    @tool("certify_week1")
+    def certify_week1() -> str:
+        """Run the full week-1 invariant gate (§4.11 rows 1-3) AND write its acceptance
+        record to build/acceptance_week1.json. The record also states what it does not
+        cover — T-DATA-05 is in-editor and T-MOVE-07 is unwritten on Q2. Certify only a
+        fully passing build. Takes no arguments."""
+        r = certify_week1_fn()
+        return f"{r['summary']} | accepted={r['accepted']}"
+
     CREW_TOOLS_AVAILABLE = True
 except Exception:  # crewai not installed — offline path still works
     CREW_TOOLS_AVAILABLE = False
     write_combat_impl = run_test_gate = certify_build = run_self_play = None
+    run_week1_gate = certify_week1 = None

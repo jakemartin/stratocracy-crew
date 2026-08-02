@@ -76,3 +76,93 @@ def run_offline(log) -> dict:
 
     return {"status": "ok", "gate_passed": r2["passed"],
             "failures_caught": r1.get("failures", [])}
+
+
+def run_week1(log) -> dict:
+    """The same spec -> gate -> certify flow for GDD §4.11 rows 1-3 (§4.4 week 1).
+
+    Rows 1 and 2 are authored and gated first because row 3 depends on both (§4.11's
+    Depends-on column). Row 3 then repeats the Combat demonstration with the movement
+    hallucination: pass 1 highlights every hex within `hexDistance <= move`, which
+    looks right and ignores terrain entirely — the failure §2.5 names in advance when
+    it promises "the real move set, not an estimate".
+    """
+    log("\n" + "=" * 78)
+    log("WEEK 1 — GDD §4.11 rows 1-3 (hex grid & math, data tables, movement)")
+    log("=" * 78 + "\n")
+
+    # --- rows 1 and 2: the two with no dependencies -----------------------------
+    for key, spec_file, note in (
+        ("hex",  "spec/hex_spec.md",
+         "axial (q,r), the six-direction fixed order, canonical order r-asc then q-asc"),
+        ("data", "spec/data_spec.md",
+         "the §4.8 CSVs — hard fail on a missing column, never a silent default"),
+    ):
+        row = tools.WEEK1_ROWS[key]
+        log(f"[Director -> Systems Engineer] {spec_file} handed over (row {row['row']}"
+            f" — {row['system']}).")
+        log(tools.write_module_impl_fn(key, tools.read_reference(
+            row["impl"].replace(".cpp", ".good.cpp"))))
+        log(f"[Systems Engineer] authored — {note}.")
+        r = tools.run_row_gate_fn(key)
+        if not r["compiled"]:
+            log("[Systems Engineer · self-test] compile FAILED — " + r["log"])
+            log("\n[stop] No usable C++ compiler on PATH. On Windows, open the "
+                "'x64 Native Tools Command Prompt for VS' and re-run; or install "
+                "g++/clang++. Nothing else is wrong — the crew just can't build.")
+            return {"status": "no_compiler", "gate_passed": False, "failures_caught": []}
+        log("[Systems Engineer · self-test] " + r["summary"])
+        for line in r["log"].splitlines():
+            log("    " + line)
+        if not r["passed"]:
+            log("[stop] row " + str(row["row"]) + " did not pass — see the failures above.")
+            return {"status": "error", "gate_passed": False, "failures_caught": r["failures"]}
+        log("")
+
+    # --- row 3, pass 1: the hallucination ---------------------------------------
+    log("[Director -> Systems Engineer] spec/move_spec.md handed over (row 3 — "
+        "Movement & pathfinding; §4.11 says it depends on rows 1 and 2, both now green).")
+    log(tools.write_module_impl_fn("move", tools.read_reference("Move.buggy.cpp")))
+    log("[Systems Engineer] pass 1 authored — the reachable set is computed as "
+        "'every hex within hexDistance <= move'. Terrain cost is never consulted.\n")
+
+    m1 = tools.run_row_gate_fn("move")
+    log("[Systems Engineer · self-test] " + m1["summary"])
+    for line in m1["log"].splitlines():
+        log("    " + line)
+    if m1["passed"]:
+        log("[note] pass 1 unexpectedly passed — the bundled 'buggy' movement impl "
+            "should fail T-MOVE-01; continuing anyway.\n")
+    else:
+        log(f"\n[Systems Engineer · self-test] BLOCK — {', '.join(m1['failures'])} caught it. "
+            "T-MOVE-01 compares the set against an independent shortest-path pass, so "
+            "an estimate cannot pose as the real move set; T-MOVE-02 prices Woods at 2 "
+            "and refuses Water; T-MOVE-03 catches that a blocked bridge no longer "
+            "blocks. Fixing before hand-off.\n")
+
+    # --- row 3, pass 2: corrected -----------------------------------------------
+    log("[Systems Engineer] re-fed T-MOVE-01/02/03; replacing the estimate with "
+        "Dijkstra over terrain cost, ties broken by canonical hex order.")
+    log(tools.write_module_impl_fn("move", tools.read_reference("Move.good.cpp")))
+    m2 = tools.run_row_gate_fn("move")
+    log("[Systems Engineer · self-test] " + m2["summary"])
+    for line in m2["log"].splitlines():
+        log("    " + line)
+    if not m2["passed"]:
+        log("[stop] pass 2 did not pass self-test — see the failures above.")
+        return {"status": "error", "gate_passed": False,
+                "failures_caught": m1.get("failures", [])}
+
+    # --- Test Engineer: the sole release authority ------------------------------
+    cert = tools.certify_week1_fn()
+    log("\n[Test Engineer] certify_week1 -> " + cert["summary"] +
+        f" | accepted={cert['accepted']}")
+    log("[Test Engineer] acceptance record written to build/" + tools.WEEK1_ACCEPT + ".")
+    for line in cert["record"]["not_covered"]:
+        log("[Test Engineer] NOT covered by this record: " + line)
+    log("[Test Engineer] Q29 refuses a ledger flip on a partial acceptance set, so "
+        "row 2 stays pending until the in-editor T-DATA-05 pass runs. Rows 1 and 3 "
+        "have no in-editor half and are complete at this commit.")
+
+    return {"status": "ok", "gate_passed": cert["accepted"],
+            "failures_caught": m1.get("failures", [])}

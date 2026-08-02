@@ -53,11 +53,55 @@ The type-effectiveness hook ships **neutral** (`effectiveness()` returns 1.0 for
 and the pre-existing combat numbers stay byte-identical. The offline run demonstrates it end to end:
 **pass 1 blocks on T-COMBAT-07 + T-REPAIR-03, pass 2 passes 17/17.**
 
+## Week 1 — GDD §4.11 rows 1-3 (added after the Assignment-3 submission)
+
+The Combat module above is one row of the GDD's §3 provenance ledger. **§4.4 week 1
+owes three more** — §4.11 rows 1-3 — and they are built here, through the same
+spec → author → gate → certify pipeline:
+
+| Row | System | Spec | Acceptance |
+|---|---|---|---|
+| 1 | Hex grid & math | `spec/hex_spec.md` | T-HEX-01..07 |
+| 2 | Data tables (units/terrain/effectiveness) | `spec/data_spec.md` | T-DATA-01..04, 06 |
+| 3 | Movement & pathfinding | `spec/move_spec.md` | T-MOVE-01..06 |
+
+Row 3 depends on rows 1 and 2 and the gate depends on them the same way: `test_move.cpp`
+links `Hex.cpp` and `Data.cpp` and takes its move costs from `data/terrain.csv` and its
+Move allowances from `data/units.csv`. The tables are the GDD §4.8 contract —
+**authored once, read twice**: one canonical CSV that the headless loader parses and the
+editor will import, with a missing column or unparseable value a hard load failure
+rather than a silent default.
+
+**The movement gate has the same teeth as the combat one.** Pass 1 computes the
+reachable set as *"every hex within `hexDistance <= move`"* — the shortcut that looks
+right on a screenshot and never consults terrain. It is blocked on **T-MOVE-01,
+T-MOVE-02 and T-MOVE-03**, and pass 2 (Dijkstra over terrain cost, ties broken by
+canonical hex order) passes 6/6. T-MOVE-01 is the one that matters: it compares the
+module's set against an **independent** shortest-path pass written in the test, never
+against the module's own search, because §2.5 promises *"the real move set, not an
+estimate"* and a search compared to itself cannot test that.
+
+Two IDs are deliberately absent, and `build/acceptance_week1.json` records both rather
+than letting a green run imply full coverage:
+
+- **T-DATA-05** — the in-editor Unreal Automation half of row 2 (DataTable import
+  parity + the `EUnitType` mirror). §4.11 marks it **†**; nothing headless can assert
+  it, and Q29 refuses a ledger flip on a partial acceptance set, so **row 2's flip
+  waits on the editor pass** even though its headless half is green.
+- **T-MOVE-07** — reserved and unwritten. Recon's *"ignores some terrain cost"* is
+  blocked on the Q2 movement-class ruling, and no gate is written until the rule exists.
+
+Verified on **clang++ and MSVC**, 19/19 both times — which is the content of T-HEX-07's
+"fixed across runs and compilers", not a claim about it.
+
 ## Run it
 
 ```bash
 # Offline — no API key, no install; needs only a C++ compiler. Always runs.
 python run.py --offline
+
+# Just the week-1 rows (§4.11 rows 1-3), skipping the combat crew:
+python run.py --week1
 
 # Live crew — CrewAI + Claude author the module for real:
 pip install -r requirements.txt
@@ -91,27 +135,48 @@ Both paths — a C++17 compiler (`g++`, `clang++`, `c++`, or MSVC `cl.exe`). Def
 ```
 spec/combat_spec.md      Director's input contract (inputs, formula, invariants)
 spec/combat_spec_addendum.md  contract extension: type-effectiveness (eff) + repair
+spec/hex_spec.md         §4.11 row 1 contract — coords, neighbors, canonical order
+spec/data_spec.md        §4.11 row 2 contract — the §4.8 schemas, hard-fail rule
+spec/move_spec.md        §4.11 row 3 contract — Dijkstra, occupancy, the tie-break
+data/                    the canonical CSVs (§4.8): units, terrain, effectiveness
 crew/agents.py           the 3 agents (role/goal/backstory + tools + Claude LLM)
 crew/tasks.py            the 3 tasks, chained spec → implement → gate → balance
 crew/crew.py             assembles the sequential Crew
-crew/tools.py            deterministic tools: write / compile+test / self-play
+crew/tools.py            deterministic tools: write / compile+test / self-play / week-1 gate
 crew/offline.py          no-API pipeline (also demos the gate catching the hallucination)
-cpp_reference/           Combat.h, test_combat.cpp, selfplay.cpp, and good/buggy impls
+cpp_reference/           the FIXED sources — headers + test harnesses — and good/buggy impls
 run.py                   entrypoint (live if key, else offline; always produces artifacts)
-build/                   generated: Combat.cpp, balance_report.md, run_log.md, binaries
+build/                   generated: the authored .cpp files, acceptance records, binaries
 diagram.mmd              Mermaid architecture diagram
 ```
+
+**`build/` is gitignored**, so every implementation's committed home is
+`cpp_reference/*.good.cpp` and the harness that gates it is `cpp_reference/test_*.cpp`.
+The pipeline copies the fixed sources in and authors the implementation out on each run;
+nothing under `build/` is evidence of anything on its own. Anything citing this repo as
+provenance should cite the `cpp_reference/` path, which resolves in the tree.
 
 ## Outputs (in `build/` after a run)
 
 - `Combat.cpp` — the authored, gate-passing implementation
-- `run_log.md` — full spec → gate → balance transcript (incl. the caught hallucination)
+- `Hex.cpp`, `Data.cpp`, `Move.cpp` — the week-1 modules (§4.11 rows 1-3)
+- `acceptance.json` — the Combat release record (Test Engineer only)
+- `acceptance_week1.json` — the rows 1-3 release record, including what it does **not**
+  cover (T-DATA-05, T-MOVE-07) so a green run cannot imply full coverage
+- `run_log.md` — full spec → gate → balance transcript (incl. both caught hallucinations)
 - `balance_report.md` — self-play duel table + which invariant caught the bug
 
 ## Ties back to the rest of the project
 
-Every real run yields a commit-able system plus its passing test IDs — the evidence the GDD §2
+Every real run yields a commit-able system plus its passing test IDs — the evidence the GDD §3
 **provenance ledger** is waiting on. Point the ledger's *Combat resolution* row at the `Combat.cpp`
 commit and the gate result (`T-COMBAT-01..10 + T-REPAIR-01..07`), and the attribution becomes
 demonstrated fact — the same gate now also backs the ledger's pending *Repair* and
 *Type-effectiveness* rows once a live run authors them.
+
+The week-1 rows extend that chain to **§4.4's first milestone**. *Hex grid & math* and
+*Movement & pathfinding* are complete at this commit — headless, no in-editor half, so
+their acceptance sets close entirely here. *Data tables* is **not**: T-DATA-05 lives in
+the editor, and Q29 requires the full acceptance set at one commit before a row flips.
+Reporting rows 1 and 3 as built and row 2 as still pending is the honest read of the
+ledger's own rules, and it is what `acceptance_week1.json` records.

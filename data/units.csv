@@ -1,0 +1,5 @@
+Id,HP,Move,Atk,Def,RangeMin,RangeMax,CostFame,Type,CanCapture
+Infantry,10,3,4,2,1,1,100,Infantry,true
+Tank,20,5,8,5,1,1,300,Tank,false
+Artillery,8,3,10,1,2,3,200,Artillery,false
+Recon,12,7,5,3,1,1,150,Recon,false
