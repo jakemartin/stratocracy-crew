@@ -100,14 +100,16 @@ Both are **documented choices**, not rules. The GDD delegates each by leaving it
 unstated while requiring a determinate answer; each names the section it is read
 off, and neither adds a rule the GDD does not have.
 
-1. **What the turn counter counts.** §4.10's save header carries
-   `match {turn, turnCap, sideToMove, resultTier}` — `turn` and `sideToMove` are
-   **separate fields**, so the turn number is not per-side; were it per-side,
-   `sideToMove` would be derivable from it and would not need a field of its
-   own. The reading: **a turn is one full I-GO-U-GO round** (§2.1), shared by
-   both sides, and it advances when every side has ended its turn. §2.7 reads
-   the same way — "both players draw income from **turn 2**" names one number
-   for both sides.
+1. **What the turn counter counts.** Two places keep the turn number and whose
+   turn it is as **separate fields**: §4.10's canonical state hash serializes
+   `GameState` in a fixed field order beginning "turn counter, side to move",
+   and §4.7 Stub 8's UI snapshot carries
+   `match {turn, turnCap, sideToMove, resultTier or null}`. So the turn number
+   is not per-side; were it per-side, the side to move would be derivable from
+   it and would not need a field of its own. The reading: **a turn is one full
+   I-GO-U-GO round** (§2.1), shared by both sides, and it advances when every
+   side has ended its turn. §2.7 reads the same way — "both players draw income
+   from **turn 2**" names one number for both sides.
 2. **When the cap fires.** §2.11.4 displays the counter as `N / turnCap` and
    §2.13.2 ships `20`, so turn `turnCap` is a **playable** turn. The reading:
    the tiebreak resolves at the **end** of round `turnCap`, not at its start —
