@@ -54,7 +54,7 @@ const char* causeName(ResultCause c);
 // quantity the game already tracks for the economy (§2.7) and already displays on
 // the standings scoreboard (§2.11.4).
 struct SideSnapshot {
-    // Which unit is the flag is Stub 7's `isFlag` placement field (row 7, unbuilt)
+    // Which unit is the flag is Stub 7's `isFlag` placement field (row 7, built)
     // and Q10 is open on exactness, so this module takes the fact and designates
     // nothing.
     bool flagAlive      = true;

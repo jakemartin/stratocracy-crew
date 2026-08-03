@@ -34,17 +34,21 @@ expected values.
 
 ## What it deliberately does NOT do
 
-§4.11 rows 7–8 hold no code, so the driver exposes none of it and says so:
+§4.11 row 8 holds no code, so the driver exposes none of it and says so:
 
-- **No scenario file** (row 7). Boards come from built-in fixtures and from
-  `place`/`remove` commands. The driver defines **no file format**, so nothing
-  here pre-empts Stub 7 or the §4.10 save format.
-- **No UI** (row 8). Text in, text out.
+- **No UI** (row 8). Text in, text out, and `scenario snapshot` refuses rather
+  than inventing a view-model Stub 8 has not specified.
 
-**Two things it holds that no module owns yet, and labels as such.** `flag <side>
-<id>` is a **debug designation** standing in for Stub 7's `isFlag` placement field
-(row 7, unbuilt; Q10 open on exactness) — the human names the flag unit and the
-driver never picks one, so an undesignated side simply has no flag to lose.
+The **scenario file** is no longer on that list. Row 7 landed, so `scenario load
+<path>` hands the path to `Scenario.h` and installs whatever it returns — the
+driver still defines no file format and parses nothing itself.
+
+**One thing it holds that no module owns, and labels as such.** On a built-in
+fixture `flag <side> <id>` is a **debug designation** — the human names the flag
+unit and the driver never picks one, so an undesignated side simply has no flag to
+lose. A scenario loaded from a file sets it from Stub 7's `isFlag` instead, which
+T-SCN-01 has already checked is exactly one Tank per side; Q10 stays open on
+exactness either way.
 `turn <n>` remains the **debug setter** it was before row 5, and applies only when
 no match is running; once `match` starts one, `Turn.h` owns the number and the
 setter is refused.
@@ -56,8 +60,12 @@ why `GATE-DRV-01..07` are unchanged by rows 5 and 6.
 
 **The start of a turn runs the whole sequence.** `Turn.h` defines *when*; the
 driver then calls, in order, `applyStartOfTurnRepair`, `accrueIncome` and
-`captureTick` for the active side — the calls `spec/turn_spec.md` says the caller
-must make, since the turn module accrues no income and ticks no capture itself.
+`captureTick` for the active side, since the turn module accrues no income and
+ticks no capture itself. `spec/turn_spec.md` names **only** `accrueIncome` as a
+caller call — it states no capture tick and no order among the three — so the
+order is this driver's, and it is the order the Director **ruled** on 2026-08-03:
+the tick runs **after** income, so an objective whose capture completes at the
+start of turn T pays its new owner from T+1.
 `income <side>` and `capture <side>` remain as manual commands for sandbox use.
 
 It also clears `builtThisTurn` there. That is **bookkeeping, not a rule**: it is
@@ -147,5 +155,8 @@ Pure over its inputs; no RNG; no clock; no filesystem access except the
 
 ## Acceptance
 
-`GATE-DRV-01..10`. This suite gates a debug tool, not a rules system, and no §3
-ledger row flips on it.
+`GATE-DRV-01..11`. This suite gates a debug tool, not a rules system, and no §3
+ledger row flips on it. `GATE-DRV-11` covers the row-7 surface: the verdict,
+integers and hash `scenario load` prints are `Scenario.h`'s, the board it installs
+matches the file placement for placement, and a file that does not validate is
+refused **whole** — nothing installed, session unchanged.

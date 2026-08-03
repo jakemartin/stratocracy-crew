@@ -1,10 +1,11 @@
 // Stratocracy — debug-command driver implementation (§4.4 week 1).
 //
 // CONTAINS NO RULES. Every rule decision below is a call into Hex.h, Data.h,
-// Move.h, Combat.h, Economy.h, Turn.h or Ai.h. Where a question is not answerable
-// by one of those seven -- what a scenario file looks like -- the command is
-// refused rather than decided, because rows 7-8 hold no code
-// (spec/driver_spec.md).
+// Move.h, Combat.h, Economy.h, Turn.h, Ai.h or Scenario.h. What a scenario file
+// looks like is now one of them: `scenario load` hands the path to Scenario.h and
+// installs whatever it returns, refusing whatever it refuses. Where a question is
+// not answerable by one of those eight -- how a widget is fed -- the command is
+// refused rather than decided, because row 8 holds no code (spec/driver_spec.md).
 #include "Driver.h"
 
 #include <algorithm>
@@ -156,7 +157,8 @@ static AttackOutcome computeAttack(const Session& s, int atkId, int defId) {
 }
 
 // ---------------------------------------------------------------------------
-// fixtures -- built in, no file format (Stub 7 is unbuilt)
+// fixtures -- built in. The FILE format is Scenario.h's (row 7); these are the
+// hand-built boards that predate it and they carry no ownership or starting force.
 // ---------------------------------------------------------------------------
 namespace {
 struct Fixture { const char* name; int cols; int rows; const char* const* glyphs; };
@@ -212,6 +214,9 @@ bool loadFixture(Session& s, const std::string& name, std::string& err) {
         // argument so no tier is baked in here (Q8).
         next.economy = EconomyState();
         next.economy.captureTurns = 1;              // N = 1, the shipped scenario's value
+        next.scenarioLoaded = false;                // a fixture is not a scenario
+        next.scenario       = Scenario();
+        next.scenarioReport = ScenarioLoadResult();
         for (int row = 0; row < f.rows; ++row) {
             for (int col = 0; col < f.cols; ++col) {
                 const int ti = next.terrain[static_cast<std::size_t>(row) * f.cols + col];
@@ -237,6 +242,74 @@ bool loadFixture(Session& s, const std::string& name, std::string& err) {
     }
     err = "no fixture named '" + name + "'";
     return false;
+}
+
+bool installScenario(Session& s, const Scenario& sc, std::string& err) {
+    Session next = s;                       // build aside; commit only on success
+    next.bounds = sc.bounds;
+    next.terrain.assign(sc.terrainId.size(), -1);
+    for (std::size_t i = 0; i < sc.terrainId.size(); ++i) {
+        int idx = -1;
+        for (std::size_t k = 0; k < s.terrainDefs.size(); ++k)
+            if (s.terrainDefs[k].id == sc.terrainId[i]) idx = static_cast<int>(k);
+        if (idx < 0) { err = "terrain Id '" + sc.terrainId[i] + "' is in no loaded row"; return false; }
+        next.terrain[i] = idx;
+    }
+    next.units.clear();
+    next.nextUnitId = 1;
+    next.loaded     = true;
+    next.economy    = EconomyState();
+    // N is not a Stub 7 field. §2.7 fixes it at 1 (Q4) and the driver reads that the
+    // same way loadFixture already does, rather than inventing a scenario field.
+    next.economy.captureTurns = 1;
+    for (int i = 0; i < SIDE_COUNT; ++i) next.flagUnit[i] = -1;
+    next.builtThisTurn.clear();
+
+    for (const ScenarioPlacement& p : sc.placements) {
+        int defIndex = -1;
+        for (std::size_t k = 0; k < s.unitDefs.size(); ++k)
+            if (s.unitDefs[k].id == p.unitId) defIndex = static_cast<int>(k);
+        if (defIndex < 0) { err = "unit Id '" + p.unitId + "' is in no loaded row"; return false; }
+        DriverUnit u;
+        u.id       = next.nextUnitId++;
+        u.side     = p.side;
+        u.defIndex = defIndex;
+        u.hex      = p.hex;
+        u.hp       = s.unitDefs[defIndex].hpMax;
+        next.units.push_back(u);
+        // The designation comes from the FILE now. T-SCN-01 has already checked it is
+        // exactly one Tank per side, so the driver copies rather than chooses.
+        if (p.isFlag) next.flagUnit[p.side] = u.id;
+    }
+
+    // Objectives are every capturable tile the TABLE marks -- Data.h decides what is
+    // capturable -- owned as the FILE says. A capturable hex the file does not name
+    // is unowned (§2.7), which is what Scenario.h validated T-SCN-03 against.
+    for (int row = 0; row < sc.bounds.rows; ++row) {
+        for (int col = 0; col < sc.bounds.cols; ++col) {
+            const std::size_t i = static_cast<std::size_t>(row) * sc.bounds.cols + col;
+            const int ti = next.terrain[i];
+            if (ti < 0 || !s.terrainDefs[ti].capturable) continue;
+            Objective o;
+            o.hex          = offsetToAxial(col, row);
+            o.owner        = OWNER_NEUTRAL;
+            o.terrainIndex = ti;
+            for (const ScenarioOwner& w : sc.ownership)
+                if (hexEqual(w.hex, o.hex)) o.owner = w.owner;
+            next.economy.objectives.push_back(o);
+        }
+    }
+    // §2.9's difficulty handicap is a match-setup parameter applied on top, not a
+    // scenario field, so the file's value is what `initSide` gets and nothing here
+    // adjusts it (Q8).
+    initSide(next.economy, 0, sc.startingFame[0]);
+    initSide(next.economy, 1, sc.startingFame[1]);
+    next.turnNumber = 1;
+    next.match      = TurnState();
+    next.scenarioLoaded = true;
+    next.scenario       = sc;
+    s = next;
+    return true;
 }
 
 bool sessionInit(Session& s, const std::string& dataDir, std::string& err) {
@@ -380,6 +453,8 @@ std::string stateHash(const Session& s) {
         for (const Hex& h : built) { int c=0,r=0; axialToOffset(h,c,r); acc += "B"+num(c)+":"+num(r)+";"; }
         for (int i : s.buildlist) acc += "L" + num(i) + ";";
     }
+    // Row 7. Which scenario is installed is state a refused command must not change.
+    acc += "|scn" + (s.scenarioLoaded ? s.scenario.scenarioId : std::string("-")) + "|";
     unsigned long long h = 1469598103934665603ULL;          // FNV-1a, 64-bit
     for (char c : acc) { h ^= static_cast<unsigned char>(c); h *= 1099511628211ULL; }
     std::string hex;
@@ -413,6 +488,24 @@ void renderMap(const Session& s, std::vector<std::string>& out) {
     std::string cols = "   ";
     for (int col = 0; col < s.bounds.cols; ++col) cols += num(col) + "  ";
     out.push_back(cols);
+}
+
+// One lane, printed with THE RELATION NAMED AT THE SITE. Integer order carries no
+// information, so neither line relies on which integer is bigger: the ceiling is
+// printed as a ceiling, and the bare "X against Y" pair quantifies its right-hand
+// term as the SET MINIMUM over the opposing seat's capturers (Q28), never as a cost
+// from one named hex.
+std::string laneLine(const ScenarioLane& l, const ScenarioLoadResult& r) {
+    std::string line = "side " + num(l.side) + " lane " + hexLabel(l.infantry) + " -> " +
+                       hexLabel(l.objective) + ": ";
+    if (!l.laneFound) return line + "no Bridge-free land route (T-SCN-06)";
+    line += num(l.laneCost) + " MP against the " + num(r.ceiling) +
+            " MP ceiling (T-SCN-06)";
+    if (!l.opposingFound)
+        return line + "; the opposing seat has no route to that objective (T-SCN-11)";
+    return line + "; non-contention " + num(l.laneCost) + " against " + num(l.opposingCost) +
+           " (T-SCN-11, the set minimum over the opposing seat's capturers, achieved "
+           "from " + hexLabel(l.opposingFrom) + ")";
 }
 
 std::string describe(const MatchResult& r) {
@@ -452,9 +545,13 @@ void openActiveTurn(Session& s, std::vector<std::string>& out) {
                       " -> hp " + num(u->hp));
     }
 
-    // The rest of the start-of-turn moment. Row 5 defines WHEN; rows 4's own calls
-    // do the work, exactly as spec/turn_spec.md says the caller must invoke them --
-    // the turn module accrues no income and ticks no capture itself.
+    // The rest of the start-of-turn moment. Row 5 defines WHEN; row 4's own calls do
+    // the work, since the turn module accrues no income and ticks no capture itself.
+    // spec/turn_spec.md names ONLY `accrueIncome` as a caller call -- it states no
+    // capture tick and no order among the three. The order below is therefore this
+    // driver's, and it is the order the Director RULED on 2026-08-03: the tick runs
+    // AFTER income, so an objective whose capture completes at the start of turn T
+    // pays its new owner from T+1.
     const int side = s.match.activeSide;
     s.builtThisTurn.clear();                       // a new turn: every factory is free
     const int gained = accrueIncome(s.economy, s.terrainDefs, side, s.match.turnNumber);
@@ -505,13 +602,18 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
         out.push_back("forecast <atk> <def> | attack <atk> <def> | repair <id> <owned 0|1>");
         out.push_back("row 4: fame | objectives | turn <n> | income <side> |");
         out.push_back("       build <side> <Type> <col> <row> | capture <side>");
-        out.push_back("row 5: match <firstSide> <turnCap> | endturn | standings |");
+        out.push_back("row 5: match <firstSide> [<turnCap>] | endturn | standings |");
         out.push_back("       result | flag <side> <id>");
         out.push_back("row 6: ai | ai buildlist <Type>...   (plays the active side's turn)");
-        out.push_back("NOTE: no scenario file -- rows 7-8 hold no code. With no");
-        out.push_back("match running the board is a free sandbox and 'turn <n>' is a debug");
-        out.push_back("setter; 'match' hands the turn number to the turn loop, which then");
-        out.push_back("refuses the setter. 'flag' is a debug designation, not scenario data.");
+        out.push_back("row 7: scenario load <path> | scenario report | scenario hash");
+        out.push_back("       (with a scenario loaded, 'match <firstSide>' takes the cap");
+        out.push_back("        from the file -- the cap is per-scenario data, Q7)");
+        out.push_back("NOTE: no UI -- row 8 holds no code, so 'scenario snapshot' refuses");
+        out.push_back("rather than inventing a view-model. With no match running the board is");
+        out.push_back("a free sandbox and 'turn <n>' is a debug setter; 'match' hands the turn");
+        out.push_back("number to the turn loop, which then refuses the setter. On a built-in");
+        out.push_back("fixture 'flag' is a debug designation; a loaded scenario sets it from");
+        out.push_back("the file's isFlag instead.");
         return true;
     }
 
@@ -526,6 +628,61 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
         if (!loadFixture(s, t[1], err)) { out.push_back("refused: " + err); return true; }
         out.push_back("loaded fixture '" + t[1] + "' (" + num(s.bounds.cols) + "x" +
                       num(s.bounds.rows) + ")");
+        return true;
+    }
+
+    // --- row 7. The file format is Scenario.h's; the driver parses nothing. -----
+    if (cmd == "scenario") {
+        if (t.size() == 3 && t[1] == "load") {
+            Scenario sc;
+            const ScenarioLoadResult r = loadScenario(t[2], s.unitDefs, s.terrainDefs, sc);
+            if (!r.ok) {
+                // A failure refuses the WHOLE file, so nothing is installed -- but the
+                // lanes measured before the refusal are still reported, because an
+                // author needs a number and not a boolean.
+                out.push_back("refused: " + r.failedId + " -- " + r.reason);
+                for (const ScenarioLane& l : r.lanes) out.push_back("  " + laneLine(l, r));
+                return true;
+            }
+            std::string e;
+            if (!installScenario(s, sc, e)) { out.push_back("refused: " + e); return true; }
+            s.scenarioReport = r;
+            out.push_back("loaded scenario '" + sc.scenarioId + "' (" + num(sc.bounds.cols) +
+                          "x" + num(sc.bounds.rows) + ", " +
+                          num(static_cast<int>(sc.placements.size())) + " placements, symmetry " +
+                          symmetryName(sc.symmetry) + ", turnCap " + num(sc.turnCap) + ")");
+            out.push_back("  hash " + scenarioHash(sc));
+            for (const ScenarioLane& l : r.lanes) out.push_back("  " + laneLine(l, r));
+            return true;
+        }
+        if (t.size() == 2 && t[1] == "report") {
+            if (!s.scenarioLoaded) {
+                out.push_back("refused: no scenario loaded -- run 'scenario load <path>'");
+                return true;
+            }
+            out.push_back("scenario '" + s.scenario.scenarioId + "', capturing row Move " +
+                          num(s.scenarioReport.captureMove) + ", ceiling " +
+                          num(s.scenarioReport.ceiling) + " MP (2 x Move, derived)");
+            for (const ScenarioLane& l : s.scenarioReport.lanes)
+                out.push_back("  " + laneLine(l, s.scenarioReport));
+            return true;
+        }
+        if (t.size() == 2 && t[1] == "hash") {
+            if (!s.scenarioLoaded) {
+                out.push_back("refused: no scenario loaded -- run 'scenario load <path>'");
+                return true;
+            }
+            out.push_back(scenarioHash(s.scenario));
+            return true;
+        }
+        if (t.size() == 2 && t[1] == "snapshot") {
+            // Where an answer would need row 8, REFUSE rather than decide. The
+            // view-model snapshot is Stub 8's contract and the driver holds none.
+            out.push_back("refused: the view-model snapshot is Stub 8's contract (row 8, "
+                          "unbuilt) -- the driver refuses rather than inventing one");
+            return true;
+        }
+        out.push_back("refused: usage: scenario load <path> | scenario report | scenario hash");
         return true;
     }
 
@@ -696,7 +853,7 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
                            [d](const DriverUnit& u) { return u.id == d; }), s.units.end());
             // Row 4: the kill award. Economy.h decides the amount. Whether the victim
             // was a flag now has an answer -- the `flag` command's debug designation,
-            // still standing in for Stub 7's `isFlag` (row 7, unbuilt). Undesignated
+            // read off Stub 7's `isFlag` when a scenario was loaded. Undesignated
             // sides pass false, exactly as before.
             const bool victimIsFlag =
                 (defSide >= 0 && defSide < SIDE_COUNT && s.flagUnit[defSide] == d);
@@ -849,8 +1006,23 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
     // --- row 5 surfaces. Every one of these delegates to Turn.h ----------------
     if (cmd == "match") {
         int first = 0, cap = 0;
-        if (t.size() != 3 || !parseInt(t[1], first) || !parseInt(t[2], cap)) {
-            out.push_back("refused: usage: match <firstSide> <turnCap>"); return true; }
+        bool haveCap = false;
+        if (t.size() == 3 && parseInt(t[1], first) && parseInt(t[2], cap)) {
+            haveCap = true;
+        } else if (t.size() == 2 && parseInt(t[1], first)) {
+            // Q7 ruled the cap is per-scenario data. With a scenario loaded there is
+            // a place to read it from, so this form reads it there instead of asking
+            // the human to retype a number the file already carries.
+            if (!s.scenarioLoaded) {
+                out.push_back("refused: no scenario loaded -- give the cap, or run "
+                              "'scenario load <path>' so it comes from the file (Q7)");
+                return true;
+            }
+            cap = s.scenario.turnCap;
+            haveCap = true;
+        }
+        if (!haveCap) {
+            out.push_back("refused: usage: match <firstSide> [<turnCap>]"); return true; }
         std::string e;
         // The cap is per-scenario data (Q7) and Turn.h refuses an unusable one rather
         // than substituting a default, so no cap value lives in this file.
@@ -929,8 +1101,9 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
         }
         s.flagUnit[side] = id;
         out.push_back("side " + num(side) + " flag = #" + num(id) +
-                      " (a debug designation; the scenario field that will carry it is "
-                      "Stub 7's isFlag, row 7 unbuilt, and Q10 is open on exactness)");
+                      " (a debug designation, for a built-in fixture; a loaded scenario "
+                      "sets this from Stub 7's isFlag instead, and Q10 is open on "
+                      "exactness either way)");
         return true;
     }
 

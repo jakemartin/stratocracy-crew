@@ -1,6 +1,7 @@
 // Stratocracy — debug-command driver (§4.4 week 1, "Playable via debug commands").
 // Zero engine dependencies. Contains NO RULES: every rule decision delegates to
-// Hex.h, Data.h, Move.h, Combat.h, Economy.h or Turn.h. See spec/driver_spec.md.
+// Hex.h, Data.h, Move.h, Combat.h, Economy.h, Turn.h, Ai.h or Scenario.h. See
+// spec/driver_spec.md.
 #pragma once
 
 #include <string>
@@ -12,6 +13,7 @@
 #include "Economy.h"
 #include "Hex.h"
 #include "Move.h"
+#include "Scenario.h"
 #include "Turn.h"
 
 namespace strat {
@@ -49,10 +51,12 @@ struct Session {
     // untouched by row 5.
     TurnState match;
 
-    // A DEBUG DESIGNATION standing in for Stub 7's `isFlag` placement field (row 7,
-    // unbuilt; Q10 open on exactness). The human names the flag unit; the driver
-    // never picks one. -1 means this side has no flag designated, and flag death is
-    // then simply unreachable rather than assumed.
+    // Which unit is the flag. On a BUILT-IN fixture this is a debug designation the
+    // human writes with `flag <side> <id>`; the driver never picks one, and -1 means
+    // this side has no flag, so flag death is unreachable rather than assumed. On a
+    // scenario loaded from a file it is set from Stub 7's `isFlag` placement field,
+    // which T-SCN-01 has already checked is exactly one Tank per side. Q10 stays open
+    // on exactness either way.
     int flagUnit[SIDE_COUNT] = {-1, -1};
 
     // Row 6. Factories built at this turn, cleared at each turn start. §2.7's "one
@@ -65,15 +69,33 @@ struct Session {
     // The AI's buildlist (§2.9), as defIndexes. Empty until `ai buildlist` sets it
     // or a fixture supplies one; the driver invents no ratio.
     std::vector<int> buildlist;
+
+    // Row 7. The scenario `scenario load` installed, and the verdict that installed
+    // it. Held so `scenario report` can reprint the MEASURED lane integers without
+    // re-pricing anything, and so `match <firstSide>` can read the cap off the file
+    // rather than off a literal (Q7). False until a file is loaded; a built-in
+    // fixture clears it, because a fixture is not a scenario.
+    bool               scenarioLoaded = false;
+    Scenario           scenario;
+    ScenarioLoadResult scenarioReport;
 };
 
 // Loads data/units.csv, data/terrain.csv and data/effectiveness.csv. False on any
 // defect, with the loader's reason in `err` (§4.8: never a silent default).
 bool sessionInit(Session& s, const std::string& dataDir, std::string& err);
 
-// Built-in boards. No file format is defined or read -- that is Stub 7's, unbuilt.
+// Built-in boards -- hand-built terrain with no ownership, no starting force and no
+// guided opening. A SCENARIO FILE is the other way onto a board (`scenario load`),
+// and it is Scenario.h that parses and validates it; the driver installs what that
+// module returns and refuses whatever it refuses.
 std::vector<std::string> fixtureNames();
 bool loadFixture(Session& s, const std::string& name, std::string& err);
+
+// Installs an ALREADY-VALIDATED scenario as the session board: terrain, placements,
+// the `isFlag` designation, objective ownership and starting Fame, each landing in
+// the module that owns it. Decides nothing -- false and `err` if the loaded tables
+// cannot resolve an Id, and the session is left untouched.
+bool installScenario(Session& s, const Scenario& sc, std::string& err);
 
 // Executes one command line, appending its output to `out`. Returns false only for
 // `quit`. A refused command appends a reason and changes nothing (GATE-DRV-06).

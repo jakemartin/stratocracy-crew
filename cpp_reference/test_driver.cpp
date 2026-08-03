@@ -1,4 +1,4 @@
-// Gate for the debug-command driver (GATE-DRV-01..09). See spec/driver_spec.md.
+// Gate for the debug-command driver (GATE-DRV-01..11). See spec/driver_spec.md.
 //
 // These are NOT GDD acceptance IDs and flip no §3 ledger row -- the driver builds no
 // rules system. They assert one property: that the driver decides nothing itself. So
@@ -438,6 +438,84 @@ int main(int argc, char** argv) {
         if (stateHash(c) != before) ok10 = false;
     }
     check("GATE-DRV-10 ai-turn-equals-typed-commands", ok10);
+
+    // --- GATE-DRV-11 ---------------------------------------------------------
+    // `scenario load` adds nothing of its own either: the verdict it prints and the
+    // board it installs are Scenario.h's, so the same file loaded directly through
+    // the module gives the same integers, the same hash and the same placements.
+    // Where an answer would need row 8 the command REFUSES rather than deciding.
+    bool ok11 = true;
+    {
+        const std::string path = dir + "/ferrum_crossing.json";
+        Session d;
+        std::string e;
+        sessionInit(d, dir, e);
+
+        // A scenario command needs no fixture: it IS the other way onto a board.
+        const std::string empty = stateHash(d);
+        if (!contains(run(d, "scenario report"), "refused")) ok11 = false;
+        if (!contains(run(d, "scenario hash"), "refused")) ok11 = false;
+        if (!contains(run(d, "scenario snapshot"), "Stub 8")) ok11 = false;
+        if (!contains(run(d, "scenario wobble"), "refused")) ok11 = false;
+        if (stateHash(d) != empty) ok11 = false;          // a refusal changed nothing
+
+        // The module, called directly, is the expectation.
+        Scenario sc;
+        const ScenarioLoadResult want = loadScenario(path, d.unitDefs, d.terrainDefs, sc);
+        if (!want.ok) ok11 = false;
+
+        const std::vector<std::string> got = run(d, "scenario load " + path);
+        if (contains(got, "refused")) ok11 = false;
+        if (!d.scenarioLoaded) ok11 = false;
+        if (!contains(got, scenarioHash(sc))) ok11 = false;
+        // every measured integer the driver printed is the module's, and the ceiling
+        // is printed as a CEILING while the non-contention pair is printed bare.
+        for (const ScenarioLane& l : want.lanes) {
+            const std::string pair = std::to_string(l.laneCost) + " against " +
+                                     std::to_string(l.opposingCost);
+            const std::string ceil = std::to_string(l.laneCost) + " MP against the " +
+                                     std::to_string(want.ceiling) + " MP ceiling";
+            if (!contains(got, pair) || !contains(got, ceil)) ok11 = false;
+        }
+        // the board it installed is the file's, unit for unit and hex for hex
+        if (d.bounds.cols != sc.bounds.cols || d.bounds.rows != sc.bounds.rows) ok11 = false;
+        if (d.units.size() != sc.placements.size()) ok11 = false;
+        for (const ScenarioPlacement& pl : sc.placements) {
+            bool seen = false;
+            for (const DriverUnit& u : d.units)
+                if (hexEqual(u.hex, pl.hex) && u.side == pl.side &&
+                    d.unitDefs[u.defIndex].id == pl.unitId &&
+                    u.hp == d.unitDefs[u.defIndex].hpMax) seen = true;
+            if (!seen) ok11 = false;
+            // isFlag came from the FILE, not from a `flag` designation
+            if (pl.isFlag) {
+                const DriverUnit* fu = findUnitById(d, d.flagUnit[pl.side]);
+                if (fu == nullptr || !hexEqual(fu->hex, pl.hex)) ok11 = false;
+            }
+        }
+        // ownership and starting Fame landed in Economy.h, as the file states them
+        for (const ScenarioOwner& w : sc.ownership) {
+            const Objective* o = findObjective(d.economy, w.hex);
+            if (o == nullptr || o->owner != w.owner) ok11 = false;
+        }
+        for (int i = 0; i < SIDE_COUNT; ++i)
+            if (d.economy.side[i].fameTotal != sc.startingFame[i]) ok11 = false;
+
+        // `match <firstSide>` reads the cap off the file rather than off a literal.
+        if (!contains(run(d, "match 0"), std::to_string(sc.turnCap))) ok11 = false;
+        if (d.match.turnCap != sc.turnCap) ok11 = false;
+
+        // A file that does not validate is refused WHOLE: nothing is installed, and
+        // the failing ID is the module's, not a message the driver composed.
+        Session f;
+        sessionInit(f, dir, e);
+        const std::string clean = stateHash(f);
+        const std::vector<std::string> bad = run(f, "scenario load " + dir + "/units.csv");
+        if (!contains(bad, "refused")) ok11 = false;
+        if (f.scenarioLoaded || f.loaded) ok11 = false;
+        if (stateHash(f) != clean) ok11 = false;
+    }
+    check("GATE-DRV-11 scenario-load-is-the-scenario-modules", ok11);
 
     std::printf("\n%d/%d passed\n", g_total - g_fail, g_total);
     return g_fail == 0 ? 0 : 1;

@@ -158,7 +158,7 @@ bool unitAction(const AiState& s, int side, const Board& board,
     }
 
     // (4) otherwise advance toward the enemy flag, or -- when no flag is designated
-    // (Stub 7 unbuilt) -- toward the canonically first enemy.
+    // (Q10 open on exactness) -- toward the canonically first enemy.
     {
         const AiUnit* goal = nullptr;
         for (const AiUnit* e : enemies) if (e->isFlag) { goal = e; break; }

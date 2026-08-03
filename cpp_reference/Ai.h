@@ -25,7 +25,7 @@
 
 namespace strat {
 
-// A unit as the AI sees it. `isFlag` is Stub 7's placement field (row 7, unbuilt;
+// A unit as the AI sees it. `isFlag` is Stub 7's placement field (row 7, built;
 // Q10 open) and arrives as a fact -- the AI designates nothing.
 struct AiUnit {
     int  id       = 0;
