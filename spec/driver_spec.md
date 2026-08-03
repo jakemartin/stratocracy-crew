@@ -23,19 +23,19 @@ is already gated:
 | damage, counter eligibility, repair amount | `Combat.h` | T-COMBAT-01..10, T-REPAIR-01..07 |
 | capture, income, build cost and spawn, kill awards | `Economy.h` | T-FAME-01..09 |
 | alternation, act flags, the start-of-turn moment, the §2.8 result | `Turn.h` | T-TURN-01..09 |
+| what the opponent does with its turn | `Ai.h` | T-AI-01..06 |
 
-If a question is not answerable by one of those six, **the driver refuses the
+If a question is not answerable by one of those seven, **the driver refuses the
 command** rather than deciding it. That is what keeps a debug tool from quietly
 becoming a second rules implementation — the failure §4.9's T-INT-03 exists to
-prevent one layer up, and the reason `GATE-DRV-01`, `-02`, `-05`, `-08` and `-09`
+prevent one layer up, and the reason `GATE-DRV-01`, `-02`, `-05`, `-08`, `-09` and `-10`
 compare the driver's output against direct module calls rather than against
 expected values.
 
 ## What it deliberately does NOT do
 
-§4.11 rows 6–8 hold no code, so the driver exposes none of it and says so:
+§4.11 rows 7–8 hold no code, so the driver exposes none of it and says so:
 
-- **No AI** (row 6).
 - **No scenario file** (row 7). Boards come from built-in fixtures and from
   `place`/`remove` commands. The driver defines **no file format**, so nothing
   here pre-empts Stub 7 or the §4.10 save format.
@@ -52,7 +52,18 @@ setter is refused.
 **With no match running the board is a free sandbox**, exactly as it was before
 row 5: no side owns the turn, either side may act, and a unit may act repeatedly.
 That is deliberate — it is what `place`/`hp`/`remove` debugging needs — and it is
-why `GATE-DRV-01..07` are unchanged by row 5.
+why `GATE-DRV-01..07` are unchanged by rows 5 and 6.
+
+**The start of a turn runs the whole sequence.** `Turn.h` defines *when*; the
+driver then calls, in order, `applyStartOfTurnRepair`, `accrueIncome` and
+`captureTick` for the active side — the calls `spec/turn_spec.md` says the caller
+must make, since the turn module accrues no income and ticks no capture itself.
+`income <side>` and `capture <side>` remain as manual commands for sandbox use.
+
+It also clears `builtThisTurn` there. That is **bookkeeping, not a rule**: it is
+handed to the AI as a board fact and gates no player command — see the first
+change request in `spec/ai_spec.md`, which is why the per-turn half of §2.7's
+"one build per factory per turn" currently has no enforcer.
 
 ## Command set
 
@@ -82,6 +93,8 @@ endturn                               end the active side's turn
 standings                             the §2.11.4 scoreboard rows + the leader
 result                                the recorded tier, cause and winner
 flag <side> <id>                      designate a side's flag unit (debug)
+ai                                    the AI plays the active side's whole turn
+ai buildlist <Type>...                set the §2.9 buildlist the AI builds from
 quit                                  exit
 ```
 
@@ -122,6 +135,10 @@ This is the §4.7 convention: no authored or human-facing layer stores axial.
   what is displayed during a match and what decides it cannot disagree; a
   designated flag's death ends the match through `checkImmediate`, with no
   tiebreak key read.
+- **GATE-DRV-10** — the `ai` command adds nothing of its own: replaying by hand the
+  command lines it printed reaches a byte-identical state hash, so the AI can reach
+  no state a typed command cannot. With no match running it refuses and changes
+  nothing.
 
 ## Determinism / constraints
 
@@ -130,5 +147,5 @@ Pure over its inputs; no RNG; no clock; no filesystem access except the
 
 ## Acceptance
 
-`GATE-DRV-01..09`. This suite gates a debug tool, not a rules system, and no §3
+`GATE-DRV-01..10`. This suite gates a debug tool, not a rules system, and no §3
 ledger row flips on it.

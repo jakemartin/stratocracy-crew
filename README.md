@@ -53,13 +53,13 @@ The type-effectiveness hook ships **neutral** (`effectiveness()` returns 1.0 for
 and the pre-existing combat numbers stay byte-identical. The offline run demonstrates it end to end:
 **pass 1 blocks on T-COMBAT-07 + T-REPAIR-03, pass 2 passes 17/17.**
 
-## §4.11 rows 1-5 (added after the Assignment-3 submission)
+## §4.11 rows 1-6 (added after the Assignment-3 submission)
 
 The Combat module above is one row of the GDD's §3 provenance ledger. **§4.4 week 1
 owes three more** — §4.11 rows 1-3 — and they are built here, through the same
-spec → author → gate → certify pipeline. **Rows 4 and 5 are week 3's work** (§4.4:
-"Capture + production (§4.11 rows 4-5)"), delivered early because §4.11's critical
-path runs `1 → 3 → 4 → 5 → 6/8` and each was in turn the only unblocked link on it:
+spec → author → gate → certify pipeline. **Rows 4, 5 and 6 run ahead of §4.4's
+milestone table**, delivered early because §4.11's critical path runs
+`1 → 3 → 4 → 5 → 6/8` and each was in turn the only unblocked link on it:
 
 | Row | System | Spec | Acceptance | §4.4 week |
 |---|---|---|---|---|
@@ -68,6 +68,7 @@ path runs `1 → 3 → 4 → 5 → 6/8` and each was in turn the only unblocked 
 | 3 | Movement & pathfinding | `spec/move_spec.md` | T-MOVE-01..06 | 1 |
 | 4 | Capture & Fame economy | `spec/economy_spec.md` | T-FAME-01..09 | **3** |
 | 5 | Turn loop & win/tiebreak | `spec/turn_spec.md` | T-TURN-01..09 | **3** |
+| 6 | Opponent AI (baseline) | `spec/ai_spec.md` | T-AI-01..06 + smoke | **3** |
 
 Row 3 depends on rows 1 and 2 and the gate depends on them the same way: `test_move.cpp`
 links `Hex.cpp` and `Data.cpp` and takes its move costs from `data/terrain.csv` and its
@@ -168,6 +169,39 @@ arrive as a caller-supplied `BoardSnapshot` — the same quantities §2.11.4's
 scoreboard already displays, because §2.8's tiebreak adds no new state, only an
 ordering over existing state.
 
+### Row 6 — Opponent AI (the shipping opponent)
+
+`spec/ai_spec.md`, **T-AI-01..06 + GATE-AI-SMOKE, 7/7** under both compilers. §4.4
+puts it in week 3, at the end of the vertical slice. This is not a placeholder: §2.9
+makes difficulty a **starting-Fame handicap and never a smarter routine**, so this one
+routine is what every tier plays against.
+
+**It decides and applies nothing.** The AI emits one ordinary command at a time and the
+caller applies it — in the gate, through the debug driver's `execute`, the same door a
+typed command uses. That is what makes T-AI-01's *"every AI command passes the same
+validation as a player command"* structural rather than asserted, and it is why no
+second rules composition exists in the test file to disagree with the modules.
+
+The pass-1 hallucination is two readings an author reaches from §2.9 alone:
+
+| Bug | Why it looks right | Caught by |
+|---|---|---|
+| the losing-attack guard skips any attack where the counter kills the unit | "skip a strictly-losing attack (the unit would die and trade down)" reads as one condition | **T-AI-05** |
+| build ties break by the order §2.4's table **prints** its units | that is the order they are read in, and the order the `UnitType` enum pins | **T-AI-06** |
+
+§2.9 joins **two** conditions, so dying is not by itself disqualifying — and Q9 ruled
+the build priority is **ascending §2.4 cost** (Infantry > Recon > Artillery > Tank),
+which §4.7 warns in as many words is not the printed order.
+
+T-AI-05 is asserted as a **sweep over the whole shipped stat table** rather than on one
+fixture: of 348 exchanges in which the counter kills the attacker, the guard skips 338
+and permits 10, and every permitted one is checked not to trade down. The buggy build
+permits **zero**, which is exactly the collapse into "never die" that the sweep exists
+to catch — and no hand-picked fixture would have proved the difference so cheaply.
+
+The self-play smoke runs six different openings; all six terminate at or before their
+cap with a valid tier — two flag kills, two attrition leads, two passivity draws.
+
 ### The other half of week 1 — "Playable via debug commands"
 
 §4.4's week-1 goal has two halves, and the row flips only closed one. The second is a
@@ -196,7 +230,7 @@ no longer what the game does.
 is exactly what resolves" is structural rather than merely tested — **GATE-DRV-03** then
 asserts it anyway.
 
-Its suite is **GATE-DRV-01..09**, named like `GATE-DATA-HARDFAIL` rather than `T-*`
+Its suite is **GATE-DRV-01..10**, named like `GATE-DATA-HARDFAIL` rather than `T-*`
 because it gates a tool, not a rules system: it is not a §4.7 stub, it flips no §3 ledger
 row, and it moves no count in the GDD. Every check compares the driver's output against a
 direct module call rather than a hardcoded expectation.
@@ -237,8 +271,21 @@ number. `flag <side> <id>` is a **debug designation** standing in for Stub 7's
 `isFlag` (row 7 unbuilt, Q10 open) — the human names the flag unit and the driver
 never picks one.
 
-**What it deliberately is not:** there is no AI and no scenario file, because rows 6–8
-hold no code. It is a debug tool with a real turn loop, not the game.
+Row 6 puts an opponent behind it. `ai` plays the active side's whole turn, printing
+every command it issues and applying each through the **same `execute` a typed command
+goes through** — which is what makes T-AI-01's "validated like any player command"
+structural. `GATE-DRV-10` replays those printed lines by hand and asserts the state
+hash matches, so the AI can reach no state a human could not type.
+
+```
+> ai
+  ai> move 1 0 0        #1 moved, cost 1: (0,1)(0,0)
+  ai> move 3 4 1        #3 moved, cost 4: (1,2)(1,1)(2,1)(3,1)(4,1)
+  ai: end of turn
+```
+
+**What it deliberately is not:** there is no scenario file and no UI, because rows 7–8
+hold no code. It is a debug tool with a real turn loop and a real opponent, not the game.
 
 ## Run it
 
@@ -246,7 +293,7 @@ hold no code. It is a debug tool with a real turn loop, not the game.
 # Offline — no API key, no install; needs only a C++ compiler. Always runs.
 python run.py --offline
 
-# Just the built rows (§4.11 rows 1-5) + the debug driver, skipping the combat crew:
+# Just the built rows (§4.11 rows 1-6) + the debug driver, skipping the combat crew:
 python run.py --week1
 
 # Then play it — the artifact §4.4 week 1 asks for:
@@ -289,6 +336,7 @@ spec/data_spec.md        §4.11 row 2 contract — the §4.8 schemas, hard-fail 
 spec/move_spec.md        §4.11 row 3 contract — Dijkstra, occupancy, the tie-break
 spec/economy_spec.md     §4.11 row 4 contract — income, build, capture, awards
 spec/turn_spec.md        §4.11 row 5 contract — alternation, repair moment, §2.8 result
+spec/ai_spec.md          §4.11 row 6 contract — the shipping opponent, §2.9's routine
 spec/driver_spec.md      the debug-command driver — no rules of its own
 data/                    the canonical CSVs (§4.8): units, terrain, effectiveness
 crew/agents.py           the 3 agents (role/goal/backstory + tools + Claude LLM)
@@ -311,11 +359,11 @@ provenance should cite the `cpp_reference/` path, which resolves in the tree.
 ## Outputs (in `build/` after a run)
 
 - `Combat.cpp` — the authored, gate-passing implementation
-- `Hex.cpp`, `Data.cpp`, `Move.cpp`, `Economy.cpp`, `Turn.cpp` — the rules modules
-  (§4.11 rows 1-5)
+- `Hex.cpp`, `Data.cpp`, `Move.cpp`, `Economy.cpp`, `Turn.cpp`, `Ai.cpp` — the rules
+  modules (§4.11 rows 1-6)
 - `Driver.cpp` + `stratocracy_debug` — the debug-command REPL, week 1's playable artifact
 - `acceptance.json` — the Combat release record (Test Engineer only)
-- `acceptance_week1.json` — the rows 1-5 release record, including what it does **not**
+- `acceptance_week1.json` — the rows 1-6 release record, including what it does **not**
   cover (T-DATA-05, T-MOVE-07) so a green run cannot imply full coverage
 - `run_log.md` — full spec → gate → balance transcript (incl. both caught hallucinations)
 - `balance_report.md` — self-play duel table + which invariant caught the bug
@@ -329,9 +377,9 @@ demonstrated fact — the same gate now also backs the ledger's pending *Repair*
 *Type-effectiveness* rows once a live run authors them.
 
 The week-1 rows extend that chain to **§4.4's first milestone**. *Hex grid & math*,
-*Movement & pathfinding*, *Capture & Fame economy* and *Turn loop & win/tiebreak* are
-complete at this commit — headless, no in-editor half, so their acceptance sets close
-entirely here. *Data tables* is **not**: T-DATA-05 lives in the editor, and Q29 requires
-the full acceptance set at one commit before a row flips. Reporting rows 1, 3, 4 and 5
-as built and row 2 as still pending is the honest read of the ledger's own rules, and it
-is what `acceptance_week1.json` records.
+*Movement & pathfinding*, *Capture & Fame economy*, *Turn loop & win/tiebreak* and
+*Opponent AI* are complete at this commit — headless, no in-editor half, so their
+acceptance sets close entirely here. *Data tables* is **not**: T-DATA-05 lives in the
+editor, and Q29 requires the full acceptance set at one commit before a row flips.
+Reporting rows 1, 3, 4, 5 and 6 as built and row 2 as still pending is the honest read
+of the ledger's own rules, and it is what `acceptance_week1.json` records.

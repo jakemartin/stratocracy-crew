@@ -399,6 +399,46 @@ int main(int argc, char** argv) {
     }
     check("GATE-DRV-09 standings-and-result-are-the-turn-modules", ok09);
 
+    // --- GATE-DRV-10 ---------------------------------------------------------
+    // The `ai` command adds nothing of its own: the turn it plays is exactly the
+    // sequence of ordinary command lines it prints, and replaying those lines by
+    // hand on an identical session reaches a byte-identical state. If the AI could
+    // reach a state a typed command cannot, these two hashes would differ.
+    bool ok10 = true;
+    {
+        const char* setup[] = {"place 0 Infantry 0 1", "place 1 Infantry 6 1",
+                               "place 0 Tank 1 2",     "place 1 Recon 5 2",
+                               "ai buildlist Infantry Recon", "match 0 20"};
+        Session a, b;
+        std::string e;
+        sessionInit(a, dir, e); loadFixture(a, "contested", e);
+        sessionInit(b, dir, e); loadFixture(b, "contested", e);
+        for (const char* c : setup) { run(a, c); run(b, c); }
+        if (stateHash(a) != stateHash(b)) ok10 = false;
+
+        // Session a: let the AI play. Session b: type what it printed.
+        const std::vector<std::string> out = run(a, "ai");
+        std::vector<std::string> issued;
+        for (const std::string& l : out) {
+            const std::size_t p = l.find("  ai> ");
+            if (p != std::string::npos) issued.push_back(l.substr(p + 6));
+        }
+        if (issued.empty()) ok10 = false;                 // a silent turn proves nothing
+        for (const std::string& c : issued) {
+            const std::vector<std::string> r = run(b, c);
+            if (contains(r, "refused")) ok10 = false;     // a player could not type it
+        }
+        if (stateHash(a) != stateHash(b)) ok10 = false;
+
+        // Without a match there is no turn to play, and the refusal changes nothing.
+        Session c;
+        sessionInit(c, dir, e); loadFixture(c, "open", e);
+        const std::string before = stateHash(c);
+        if (!contains(run(c, "ai"), "refused")) ok10 = false;
+        if (stateHash(c) != before) ok10 = false;
+    }
+    check("GATE-DRV-10 ai-turn-equals-typed-commands", ok10);
+
     std::printf("\n%d/%d passed\n", g_total - g_fail, g_total);
     return g_fail == 0 ? 0 : 1;
 }

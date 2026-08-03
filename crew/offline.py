@@ -79,8 +79,8 @@ def run_offline(log) -> dict:
 
 
 def run_week1(log) -> dict:
-    """The same spec -> gate -> certify flow for GDD §4.11 rows 1-5 (§4.4 week 1,
-    plus rows 4 and 5, which week 1 does not owe but which the critical path runs
+    """The same spec -> gate -> certify flow for GDD §4.11 rows 1-6 (§4.4 week 1,
+    plus rows 4, 5 and 6, which week 1 does not owe but which the critical path runs
     through).
 
     Rows 1 and 2 are authored and gated first because row 3 depends on both (§4.11's
@@ -90,7 +90,7 @@ def run_week1(log) -> dict:
     it promises "the real move set, not an estimate".
     """
     log("\n" + "=" * 78)
-    log("WEEK 1 — GDD §4.11 rows 1-5 + the debug-command driver")
+    log("WEEK 1 — GDD §4.11 rows 1-6 + the debug-command driver")
     log("=" * 78 + "\n")
 
     # Combat is a PREREQUISITE, not a work item (§4.11: "green at 5ffa8d6 and are
@@ -238,6 +238,50 @@ def run_week1(log) -> dict:
         return {"status": "error", "gate_passed": False,
                 "failures_caught": t1.get("failures", [])}
 
+    # --- row 6: the shipping opponent -------------------------------------------
+    # The driver is placed FIRST here, not gated here: row 6's own gate drives the AI
+    # through it, so `execute` must exist before the row-6 suite can run. The driver's
+    # gate still runs below, on the same file.
+    log(tools.write_module_impl_fn("driver", tools.read_reference("Driver.good.cpp")))
+    log("[Director] Driver placed as a prerequisite of row 6's gate — the AI's commands "
+        "are validated by the same 'execute' a typed command goes through, so T-AI-01 "
+        "is structural rather than asserted.\n")
+
+    log("[Director -> Systems Engineer] spec/ai_spec.md handed over (row 6 — Opponent "
+        "AI). This is the SHIPPING opponent: §2.9's difficulty is a starting-Fame "
+        "handicap, so this one routine is what every tier plays against. It decides "
+        "and applies nothing — one ordinary command at a time, through the player's path.")
+    log(tools.write_module_impl_fn("ai", tools.read_reference("Ai.buggy.cpp")))
+    log("[Systems Engineer] pass 1 authored — the losing-attack guard reads as 'do not "
+        "attack if the counter kills you', and build ties break by the order §2.4's "
+        "table prints its units.\n")
+
+    a1 = tools.run_row_gate_fn("ai")
+    log("[Systems Engineer · self-test] " + a1["summary"])
+    for line in a1["log"].splitlines():
+        log("    " + line)
+    if a1["passed"]:
+        log("[note] pass 1 unexpectedly passed — the bundled 'buggy' AI should fail "
+            "T-AI-05 and T-AI-06; continuing anyway.\n")
+    else:
+        log(f"\n[Systems Engineer · self-test] BLOCK — {', '.join(a1['failures'])} caught it. "
+            "§2.9 joins TWO conditions — the unit dies AND the exchange trades down — so "
+            "an over-cautious guard refuses every sacrifice; and Q9 ruled the build "
+            "priority is ascending §2.4 COST, which §4.7 warns in as many words is NOT "
+            "the order §2.4's table prints. Fixing before hand-off.\n")
+
+    log("[Systems Engineer] re-fed §2.9's guard and Q9's priority; restoring the second "
+        "half of the guard and ordering builds by cost.")
+    log(tools.write_module_impl_fn("ai", tools.read_reference("Ai.good.cpp")))
+    a2 = tools.run_row_gate_fn("ai")
+    log("[Systems Engineer · self-test] " + a2["summary"])
+    for line in a2["log"].splitlines():
+        log("    " + line)
+    if not a2["passed"]:
+        log("[stop] row 6 pass 2 did not pass — see the failures above.")
+        return {"status": "error", "gate_passed": False,
+                "failures_caught": a1.get("failures", [])}
+
     # --- the debug-command driver: week 1's OTHER promise ------------------------
     log("\n[Director -> Systems Engineer] spec/driver_spec.md handed over. §4.4 week 1 "
         "promises rows 1-3 AND 'Playable via debug commands'; the rows are green and "
@@ -246,9 +290,9 @@ def run_week1(log) -> dict:
     log("[Systems Engineer] authored — the driver contains NO RULES: reach/path/move "
         "delegate to Move.h, damage and counters to Combat.h, stats to Data.h, "
         "distance and adjacency to Hex.h, capture/income/build to Economy.h, and now "
-        "alternation, act flags, start-of-turn repair and the §2.8 result to Turn.h. "
-        "Where rows 6-8 would be needed — AI, scenario files — it refuses rather "
-        "than deciding.")
+        "alternation, act flags, start-of-turn repair and the §2.8 result to Turn.h, "
+        "and the opponent's decisions to Ai.h. Where rows 7-8 would be needed — the "
+        "scenario file — it refuses rather than deciding.")
     d = tools.run_row_gate_fn("driver")
     log("[Systems Engineer · self-test] " + d["summary"])
     for line in d["log"].splitlines():
@@ -273,8 +317,8 @@ def run_week1(log) -> dict:
     for line in cert["record"]["not_covered"]:
         log("[Test Engineer] NOT covered by this record: " + line)
     log("[Test Engineer] Q29 refuses a ledger flip on a partial acceptance set, so "
-        "row 2 stays pending until the in-editor T-DATA-05 pass runs. Rows 1, 3, 4 "
-        "and 5 have no in-editor half and are complete at this commit.")
+        "row 2 stays pending until the in-editor T-DATA-05 pass runs. Rows 1, 3, 4, "
+        "5 and 6 have no in-editor half and are complete at this commit.")
 
     return {"status": "ok", "gate_passed": cert["accepted"],
             "failures_caught": m1.get("failures", [])}

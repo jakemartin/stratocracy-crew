@@ -247,6 +247,44 @@ bool sessionInit(Session& s, const std::string& dataDir, std::string& err) {
     return true;
 }
 
+AiState aiStateOf(const Session& s) {
+    AiState a;
+    a.bounds      = s.bounds;
+    a.terrain     = s.terrain;
+    a.unitDefs    = s.unitDefs;
+    a.terrainDefs = s.terrainDefs;
+    a.economy     = s.economy;
+    a.turn        = s.match;
+    a.buildlist   = s.buildlist;
+    a.builtThisTurn = s.builtThisTurn;
+    for (const DriverUnit& u : s.units) {
+        AiUnit au;
+        au.id = u.id; au.side = u.side; au.defIndex = u.defIndex;
+        au.hex = u.hex; au.hp = u.hp;
+        au.isFlag = (u.side >= 0 && u.side < SIDE_COUNT && s.flagUnit[u.side] == u.id);
+        a.units.push_back(au);
+    }
+    return a;
+}
+
+std::string renderAiCommand(const Session& s, const AiCommand& c) {
+    int col = 0, row = 0;
+    switch (c.kind) {
+        case AiCommandKind::Build:
+            axialToOffset(c.hex, col, row);
+            return "build " + num(s.match.activeSide) + " " + s.unitDefs[c.defIndex].id +
+                   " " + num(col) + " " + num(row);
+        case AiCommandKind::Move:
+            axialToOffset(c.hex, col, row);
+            return "move " + num(c.unitId) + " " + num(col) + " " + num(row);
+        case AiCommandKind::Attack:
+            return "attack " + num(c.unitId) + " " + num(c.targetId);
+        case AiCommandKind::EndTurn:
+            return "endturn";
+    }
+    return "endturn";
+}
+
 int currentTurn(const Session& s) {
     // Turn.h owns the number the moment a match exists; before that the debug setter
     // is all there is. One expression, so no second turn counter can drift.
@@ -336,6 +374,12 @@ std::string stateHash(const Session& s) {
     // Turn.h supplies its own digest rather than the driver re-deriving one.
     acc += "|match" + stateDigest(s.match) + "|";
     for (int i = 0; i < SIDE_COUNT; ++i) acc += "f" + num(s.flagUnit[i]) + ";";
+    {
+        std::vector<Hex> built = s.builtThisTurn;
+        sortCanonical(built);
+        for (const Hex& h : built) { int c=0,r=0; axialToOffset(h,c,r); acc += "B"+num(c)+":"+num(r)+";"; }
+        for (int i : s.buildlist) acc += "L" + num(i) + ";";
+    }
     unsigned long long h = 1469598103934665603ULL;          // FNV-1a, 64-bit
     for (char c : acc) { h ^= static_cast<unsigned char>(c); h *= 1099511628211ULL; }
     std::string hex;
@@ -407,8 +451,33 @@ void openActiveTurn(Session& s, std::vector<std::string>& out) {
         out.push_back("  repaired #" + num(a.unitId) + " +" + num(a.amount) +
                       " -> hp " + num(u->hp));
     }
+
+    // The rest of the start-of-turn moment. Row 5 defines WHEN; rows 4's own calls
+    // do the work, exactly as spec/turn_spec.md says the caller must invoke them --
+    // the turn module accrues no income and ticks no capture itself.
+    const int side = s.match.activeSide;
+    s.builtThisTurn.clear();                       // a new turn: every factory is free
+    const int gained = accrueIncome(s.economy, s.terrainDefs, side, s.match.turnNumber);
+    if (gained > 0)
+        out.push_back("  income +" + num(gained) + " -> fameTotal " +
+                      num(s.economy.side[side].fameTotal));
+    {
+        std::vector<CaptureOccupant> occ;
+        for (const DriverUnit& u : s.units) {
+            CaptureOccupant c;
+            c.hex = u.hex; c.unitId = u.id; c.side = u.side;
+            c.canCapture = s.unitDefs[u.defIndex].canCapture;
+            occ.push_back(c);
+        }
+        for (const Hex& h : captureTick(s.economy, occ, side)) {
+            int c = 0, r = 0;
+            axialToOffset(h, c, r);
+            out.push_back("  side " + num(side) + " captured (" + num(c) + "," + num(r) + ")");
+        }
+    }
+
     out.push_back("turn " + num(s.match.turnNumber) + "/" + num(s.match.turnCap) +
-                  " — side " + num(s.match.activeSide) + " to move");
+                  " — side " + num(side) + " to move");
 }
 
 // Alternation is Turn.h's, so the driver reads `activeSide` and refuses; it decides
@@ -438,6 +507,7 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
         out.push_back("       build <side> <Type> <col> <row> | capture <side>");
         out.push_back("row 5: match <firstSide> <turnCap> | endturn | standings |");
         out.push_back("       result | flag <side> <id>");
+        out.push_back("row 6: ai | ai buildlist <Type>...   (plays the active side's turn)");
         out.push_back("NOTE: no AI and no scenario file -- rows 6-8 hold no code. With no");
         out.push_back("match running the board is a free sandbox and 'turn <n>' is a debug");
         out.push_back("setter; 'match' hands the turn number to the turn loop, which then");
@@ -731,6 +801,7 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
         std::string e;
         if (!queueBuild(s.economy, s.unitDefs, s.terrainDefs, side, factory, defIndex, e)) {
             out.push_back("refused: " + e); return true; }
+        s.builtThisTurn.push_back(factory);        // turn-scoped bookkeeping (row 6)
         out.push_back("queued " + s.unitDefs[defIndex].id + " at (" + num(col) + "," + num(row) +
                       ") — " + num(s.unitDefs[defIndex].costFame) +
                       " Fame committed at queue time, not refundable (Q8) -> fameTotal " +
@@ -860,6 +931,52 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
         out.push_back("side " + num(side) + " flag = #" + num(id) +
                       " (a debug designation; the scenario field that will carry it is "
                       "Stub 7's isFlag, row 7 unbuilt, and Q10 is open on exactness)");
+        return true;
+    }
+
+    // --- row 6. The AI decides; `execute` applies. Nothing else changes. --------
+    if (cmd == "ai") {
+        if (t.size() >= 2 && t[1] == "buildlist") {
+            std::vector<int> list;
+            for (std::size_t i = 2; i < t.size(); ++i) {
+                int defIndex = -1;
+                for (std::size_t k = 0; k < s.unitDefs.size(); ++k)
+                    if (s.unitDefs[k].id == t[i]) defIndex = static_cast<int>(k);
+                if (defIndex < 0) { out.push_back("refused: no unit type '" + t[i] + "'"); return true; }
+                list.push_back(defIndex);
+            }
+            s.buildlist = list;
+            std::string names;
+            for (int i : list) names += s.unitDefs[i].id + " ";
+            out.push_back("buildlist = " + (names.empty() ? std::string("(empty)") : names));
+            return true;
+        }
+        if (t.size() != 1) { out.push_back("refused: usage: ai | ai buildlist <Type>..."); return true; }
+        if (!s.match.running) {
+            out.push_back("refused: no match is running — run 'match <firstSide> <turnCap>'");
+            return true;
+        }
+        // Ask, render, apply through the SAME door a typed command uses. If a
+        // rendered command is refused, that is an AI defect and it is reported
+        // rather than swallowed (T-AI-01).
+        for (int step = 0; step < 200; ++step) {
+            const AiCommand c = nextCommand(aiStateOf(s), s.match.activeSide);
+            if (c.kind == AiCommandKind::EndTurn) {
+                out.push_back("  ai: end of turn");
+                return true;
+            }
+            const std::string line = renderAiCommand(s, c);
+            out.push_back("  ai> " + line);
+            std::vector<std::string> sub;
+            execute(s, line, sub);
+            for (const std::string& l : sub) out.push_back("     " + l);
+            for (const std::string& l : sub)
+                if (l.find("refused") != std::string::npos) {
+                    out.push_back("  ai: STOPPED — its own command was refused");
+                    return true;
+                }
+        }
+        out.push_back("  ai: STOPPED — 200 commands without ending the turn");
         return true;
     }
 

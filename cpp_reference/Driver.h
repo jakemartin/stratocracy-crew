@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "Ai.h"
 #include "Combat.h"
 #include "Data.h"
 #include "Economy.h"
@@ -53,6 +54,17 @@ struct Session {
     // never picks one. -1 means this side has no flag designated, and flag death is
     // then simply unreachable rather than assumed.
     int flagUnit[SIDE_COUNT] = {-1, -1};
+
+    // Row 6. Factories built at this turn, cleared at each turn start. §2.7's "one
+    // build per factory per turn" is turn-scoped and Economy.h enforces only the
+    // per-PENDING half, which was the whole of it while no module owned the turn --
+    // see the change request in spec/ai_spec.md. Bookkeeping, not a rule: it is
+    // handed to the AI as a board fact and gates no player command.
+    std::vector<Hex> builtThisTurn;
+
+    // The AI's buildlist (§2.9), as defIndexes. Empty until `ai buildlist` sets it
+    // or a fixture supplies one; the driver invents no ratio.
+    std::vector<int> buildlist;
 };
 
 // Loads data/units.csv, data/terrain.csv and data/effectiveness.csv. False on any
@@ -73,6 +85,15 @@ std::string stateHash(const Session& s);
 
 // The turn number in force: Turn.h's while a match runs, the debug setter otherwise.
 int currentTurn(const Session& s);
+
+// Everything the AI is allowed to see, composed from the same session a human
+// drives. Nothing here is hidden state: the AI cheats at nothing (§4.7 Stub 6).
+AiState aiStateOf(const Session& s);
+
+// Renders one AI command as the driver command line a player would type. This is
+// what makes T-AI-01 structural -- the AI's commands enter through `execute`, the
+// same door a typed command uses, and are validated identically.
+std::string renderAiCommand(const Session& s, const AiCommand& c);
 
 // The §2.8 facts, COMPOSED from the modules that own them -- objective ownership and
 // combat Fame from Economy.h, factory-ness from the terrain table, surviving HP from
