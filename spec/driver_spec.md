@@ -22,7 +22,7 @@ is already gated:
 | what a unit can reach, and by which route | `Move.h` | T-MOVE-01..06 |
 | damage, counter eligibility, repair amount | `Combat.h` | T-COMBAT-01..10, T-REPAIR-01..07 |
 | capture, income, build cost and spawn, kill awards | `Economy.h` | T-FAME-01..09 |
-| alternation, act flags, the start-of-turn moment, the §2.8 result | `Turn.h` | T-TURN-01..09 |
+| alternation, the two per-unit flags, the per-factory build allowance, the start-of-turn moment, the §2.8 result | `Turn.h` | T-TURN-01..10 |
 | what the opponent does with its turn | `Ai.h` | T-AI-01..06 |
 
 If a question is not answerable by one of those seven, **the driver refuses the

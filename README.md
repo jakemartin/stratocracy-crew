@@ -69,7 +69,7 @@ dependencies (rows 1-3) had all landed:
 | 2 | Data tables (units/terrain/effectiveness) | `spec/data_spec.md` | T-DATA-01..04, 06 | 1 |
 | 3 | Movement & pathfinding | `spec/move_spec.md` | T-MOVE-01..06 | 1 |
 | 4 | Capture & Fame economy | `spec/economy_spec.md` | T-FAME-01..09 | **3** |
-| 5 | Turn loop & win/tiebreak | `spec/turn_spec.md` | T-TURN-01..09 | **3** |
+| 5 | Turn loop & win/tiebreak | `spec/turn_spec.md` | T-TURN-01..10 | **3** |
 | 6 | Opponent AI (baseline) | `spec/ai_spec.md` | T-AI-01..06 + smoke | **3** |
 | 7 | Scenario file & validator | `spec/scenario_spec.md` | a **subset** of T-SCN-01..09, 11 — see below | **4** |
 
@@ -141,7 +141,7 @@ land before row 5.
 
 ### Row 5 — Turn loop & win/tiebreak (the row that finally owns the turn)
 
-`spec/turn_spec.md`, **T-TURN-01..09, 9/9** under both compilers. Rows 3 and 4
+`spec/turn_spec.md`, **T-TURN-01..10, 11/11** under both compilers. Rows 3 and 4
 *declined* the turn, so every question they deferred — whose turn it is, which units
 may still act, when a turn starts, when the match is over — is concentrated here.
 
@@ -161,7 +161,12 @@ ties at key 1 and falls through to objectives held — and the tier grades by ho
 the winning margin was, the way nearly every strategy game reports a win. Both are
 the exploits §1.5 closed: the first restores the turtle win, the second lets a capped
 grind's tally outrank a flag kill. It is blocked on **T-TURN-05, T-TURN-06 and
-T-TURN-07**, and pass 2 passes 9/9.
+T-TURN-07** — and, since the 2026-08-03 rebuild, on **T-TURN-01** and
+**T-TURN-10** as well: pass 1 keeps ONE shared act flag (so a unit that moves
+cannot attack, which is the defect the shipped `ad77b13` build actually carried)
+and renews the per-factory build allowance per ROUND rather than at the start of
+the owner's turn (so a factory captured mid-round inherits its previous owner's
+spent build). Pass 2 passes **11/11**.
 
 **The cap is data, not a number in the module.** Q7 ruled it per-scenario, held in
 Stub 7's `turnCap`; `initMatch` **refuses** a cap it cannot use rather than

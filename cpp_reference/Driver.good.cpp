@@ -263,7 +263,6 @@ bool installScenario(Session& s, const Scenario& sc, std::string& err) {
     // same way loadFixture already does, rather than inventing a scenario field.
     next.economy.captureTurns = 1;
     for (int i = 0; i < SIDE_COUNT; ++i) next.flagUnit[i] = -1;
-    next.builtThisTurn.clear();
 
     for (const ScenarioPlacement& p : sc.placements) {
         int defIndex = -1;
@@ -329,7 +328,7 @@ AiState aiStateOf(const Session& s) {
     a.economy     = s.economy;
     a.turn        = s.match;
     a.buildlist   = s.buildlist;
-    a.builtThisTurn = s.builtThisTurn;
+    a.builtThisTurn = s.match.builtThisTurn;   // row 5 owns it now, not the driver
     for (const DriverUnit& u : s.units) {
         AiUnit au;
         au.id = u.id; au.side = u.side; au.defIndex = u.defIndex;
@@ -447,12 +446,10 @@ std::string stateHash(const Session& s) {
     // Turn.h supplies its own digest rather than the driver re-deriving one.
     acc += "|match" + stateDigest(s.match) + "|";
     for (int i = 0; i < SIDE_COUNT; ++i) acc += "f" + num(s.flagUnit[i]) + ";";
-    {
-        std::vector<Hex> built = s.builtThisTurn;
-        sortCanonical(built);
-        for (const Hex& h : built) { int c=0,r=0; axialToOffset(h,c,r); acc += "B"+num(c)+":"+num(r)+";"; }
-        for (int i : s.buildlist) acc += "L" + num(i) + ";";
-    }
+    // The per-factory build record is no longer digested here: it moved into
+    // TurnState, so `stateDigest(s.match)` above already covers it. Digesting it a
+    // second time from a driver-side copy is what would let the two drift.
+    for (int i : s.buildlist) acc += "L" + num(i) + ";";
     // Row 7. Which scenario is installed is state a refused command must not change.
     acc += "|scn" + (s.scenarioLoaded ? s.scenario.scenarioId : std::string("-")) + "|";
     unsigned long long h = 1469598103934665603ULL;          // FNV-1a, 64-bit
@@ -553,7 +550,10 @@ void openActiveTurn(Session& s, std::vector<std::string>& out) {
     // AFTER income, so an objective whose capture completes at the start of turn T
     // pays its new owner from T+1.
     const int side = s.match.activeSide;
-    s.builtThisTurn.clear();                       // a new turn: every factory is free
+    // The build allowance is no longer cleared here. `beginTurn` clears it alongside
+    // the two per-unit flags (T-TURN-01(e), T-TURN-10), so the renewal moment is one
+    // line in the module that owns the turn rather than a driver convention that the
+    // AI happened to share and the player's `build` never consulted.
     const int gained = accrueIncome(s.economy, s.terrainDefs, side, s.match.turnNumber);
     if (gained > 0)
         out.push_back("  income +" + num(gained) + " -> fameTotal " +
@@ -808,11 +808,15 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
             desc += "(" + num(c) + "," + num(r) + ")";
         }
         if (cmd == "path") { out.push_back("cost " + num(cost) + ": " + desc); return true; }
-        // Row 5: whether this unit may act at all is Turn.h's answer. Asked AFTER the
-        // route is known and BEFORE anything moves, so a refusal changes nothing.
+        // Row 5: whether this unit may MOVE is Turn.h's answer, and it is the MOVE
+        // flag that a move spends -- not the act. Asked AFTER the route is known and
+        // BEFORE anything moves, so a refusal changes nothing. A unit that has
+        // already attacked from where it stands still reaches this and still moves
+        // (T-TURN-01); until the two flags existed this call was `markActed`, which
+        // is why §2.1's own move-then-act sequence was unimplementable.
         if (s.match.running) {
             std::string e;
-            if (!markActed(s.match, id, u->side, e)) { out.push_back("refused: " + e); return true; }
+            if (!markMoved(s.match, id, u->side, e)) { out.push_back("refused: " + e); return true; }
         }
         mutableUnitById(s, id)->hex = goal;
         out.push_back("#" + num(id) + " moved, cost " + num(cost) + ": " + desc);
@@ -956,9 +960,23 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
         if (wrongSideForTurn(s, side, out)) return true;
         const Hex factory = offsetToAxial(col, row);
         std::string e;
+        // Row 5, T-TURN-10: one build per factory per turn. Asked as a PREDICATE
+        // before anything mutates, because Fame is committed at queue time (Q8(c))
+        // and is not refundable -- a refusal arriving after the charge would take
+        // Fame for a unit that never queues. Economy.h enforces only the per-PENDING
+        // slot half, which is all it can enforce while the turn is an argument to it.
+        if (s.match.running && !canBuildAt(s.match, factory, side)) {
+            // markBuilt refuses and changes nothing when its predicate is false, so
+            // this yields Turn.h's own reason rather than the driver inventing one.
+            std::string why;
+            markBuilt(s.match, factory, side, why);
+            out.push_back("refused: " + why); return true;
+        }
         if (!queueBuild(s.economy, s.unitDefs, s.terrainDefs, side, factory, defIndex, e)) {
             out.push_back("refused: " + e); return true; }
-        s.builtThisTurn.push_back(factory);        // turn-scoped bookkeeping (row 6)
+        // The allowance is spent only now, once the build has actually queued -- a
+        // build refused as unaffordable leaves the factory free to try again.
+        if (s.match.running) { std::string me; markBuilt(s.match, factory, side, me); }
         out.push_back("queued " + s.unitDefs[defIndex].id + " at (" + num(col) + "," + num(row) +
                       ") — " + num(s.unitDefs[defIndex].costFame) +
                       " Fame committed at queue time, not refundable (Q8) -> fameTotal " +

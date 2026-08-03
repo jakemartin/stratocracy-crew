@@ -37,8 +37,10 @@ module defines.
 
 ## Inputs
 
-Game state; per-unit act flags; the turn counter and cap (Q7, stored in the
-scenario file, Stub 7); commands incl. `EndTurn{}`.
+Game state; per-unit move and act flags — **TWO flags per unit, not one**
+(T-TURN-01); the per-factory record of builds taken this turn (T-TURN-10); the
+turn counter and cap (Q7, stored in the scenario file, Stub 7); commands incl.
+`EndTurn{}`.
 
 ## Required functions
 
@@ -51,6 +53,12 @@ std::vector<strat::RepairApplied>
 bool strat::canAct(const TurnState&, int unitId, int unitSide);
 bool strat::markActed(TurnState&, int unitId, int unitSide, std::string& err);
 bool strat::hasActed(const TurnState&, int unitId);
+bool strat::canMove(const TurnState&, int unitId, int unitSide);
+bool strat::markMoved(TurnState&, int unitId, int unitSide, std::string& err);
+bool strat::hasMoved(const TurnState&, int unitId);
+bool strat::hasBuiltThisTurn(const TurnState&, const Hex& factory);
+bool strat::canBuildAt(const TurnState&, const Hex& factory, int side);
+bool strat::markBuilt(TurnState&, const Hex& factory, int side, std::string& err);
 strat::MatchResult strat::endTurn(TurnState&, const BoardSnapshot&);
 strat::MatchResult strat::resolveAtCap(const BoardSnapshot&);
 int  strat::tierRank(ResultTier);
@@ -59,9 +67,22 @@ std::string strat::stateDigest(const TurnState&);
 
 ## Invariants (the merge gate)
 
-- **T-TURN-01** — strict alternation; each unit acts **at most once per own
-  turn**, in any order the owner chooses (§2.1). A unit of the inactive side may
-  not act; a second act by the same unit is refused; a refusal changes nothing.
+- **T-TURN-01** — strict alternation; each unit carries **TWO INDEPENDENT
+  flags** in its own turn — one for its move, one for its act — and may move at
+  most once **AND** act at most once, **IN EITHER ORDER** (Director ruling,
+  2026-08-03). Moving never consumes the act and acting never consumes the move.
+  The per-unit sequence is §2.1's to state; this gate asserts the two flags and
+  reads no ordering constraint into them. The owner takes its units in any order
+  it chooses (§2.1). A unit of the inactive side may neither move nor act. The
+  gate asserts: **(a)** a move-then-attack by one unit COMPLETES; **(b)** an
+  attack-then-move by the same unit COMPLETES, leaving both of that unit's flags
+  spent exactly as (a) leaves them — the two orders are **not** state-equivalent,
+  since the two attacks are made from different hexes, so the assertion is on the
+  flags and not on a state match; **(c)** a second move, or a second act, is
+  REFUSED whichever of the two the unit spent first; **(d)** a refused command
+  changes nothing (§4.9) — it sets neither flag and moves no unit; and **(e)**
+  BOTH flags clear at the start of the owner's turn, the same moment T-TURN-10's
+  per-factory build allowance renews.
 - **T-TURN-02** — flag death ends the match **immediately** — Decisive win for
   the killer, loss for the owner (§2.8). Once recorded, the match is over: no
   turn begins, no unit acts, and the cap tiebreak is **never evaluated**
@@ -93,6 +114,19 @@ std::string strat::stateDigest(const TurnState&);
   not re-asserted here — they are already green at `5ffa8d6`.
 - **T-TURN-09** — determinism: the same command sequence from the same scenario
   → identical result tier and identical state at every step.
+- **T-TURN-10** — **one build per factory per turn**, player and AI alike (§2.7;
+  Q8(b), ruled): a Build naming a factory that has already taken its build this
+  turn is **REFUSED**, and `fameTotal` is unchanged by the refusal — Fame is
+  committed at queue time (Q8(c)) and a refused Build never queues, so the caller
+  must consult this **before** it charges anything. BOTH dispositions of the
+  first build count against the allowance: one that spawned immediately, and one
+  that waits and holds the factory's slot (T-FAME-04). The slot and this
+  allowance are **two rules, not one**. **The allowance renews at the start of
+  the OWNER's turn** — the same moment the two per-unit flags clear, and *not*
+  per round: a factory that changes hands mid-round arrives with a clear record
+  for its new owner, which is the case the two boundaries disagree on. This ID
+  lives here rather than in Stub 4 because the check needs the turn number, and
+  the economy module takes the turn as an argument rather than owning it (§3).
 
 ### Two stated readings
 
@@ -125,8 +159,10 @@ Must compile with a plain C++17 compiler.
 ## Out of scope, by design
 
 - **Which unit is the flag.** `isFlag` is a Stub 7 scenario placement field (row
-  7, unbuilt) and Q10 is open on exactness, so the module takes `flagAlive` per
-  side as a snapshot fact and designates nothing.
+  7, **built** at `9086d6a` on a partial pass) and Q10 is open on exactness, so
+  the module takes `flagAlive` per side as a snapshot fact and designates
+  nothing. Row 7 landing does not change that: what this module declines is the
+  designation, not the field's existence.
 - **Both flags down at once.** A legal match cannot reach it — the first death
   ends the match — so the module refuses to grade that snapshot rather than
   inventing a rule for an unreachable state.
@@ -134,5 +170,5 @@ Must compile with a plain C++17 compiler.
 
 ## Acceptance
 
-`T-TURN-01..09`. Row 5's ledger row flips only on the full set at one commit
-(Q29).
+`T-TURN-01..10`. Row 5's ledger row flips only on the full set at one commit
+(Q29), which since 2026-08-03 is read per acceptance ID as well as per row.

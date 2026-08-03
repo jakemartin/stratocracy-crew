@@ -137,6 +137,12 @@ MatchResult beginTurn(TurnState& s, const BoardSnapshot& b) {
     }
 
     s.acted.clear();                 // a new turn: every unit is unacted again
+    // PASS-1 BUG (T-TURN-10): "one build per factory per TURN", and a turn is one
+    // full I-GO-U-GO round -- so the allowance is cleared when the round advances,
+    // in endTurn, not here. Reads perfectly against the two stated readings and is
+    // wrong the moment a factory changes hands mid-round: its new owner inherits the
+    // previous owner's spent build. The ruling is that the allowance renews at the
+    // start of the OWNER's turn, which is this line.
     s.phase = Phase::StartOfTurn;
     return s.result;
 }
@@ -171,6 +177,57 @@ std::vector<RepairApplied> applyStartOfTurnRepair(TurnState& s,
 bool hasActed(const TurnState& s, int unitId) {
     for (int id : s.acted) if (id == unitId) return true;
     return false;
+}
+
+// PASS-1 BUG (T-TURN-01): "a unit does one thing per turn" -- so the move flag and
+// the act flag are the same flag, and `moved` is left unused. This is the reading an
+// author reaches from §2.1's single `select -> move -> act -> done` arrow without the
+// invariant in front of them, and it is exactly the defect the shipped ad77b13 build
+// carries: markMoved and markActed both write `acted`, so a unit that moves cannot
+// attack and §2.1's own sequence is unimplementable.
+bool hasMoved(const TurnState& s, int unitId) {
+    return hasActed(s, unitId);
+}
+
+bool canMove(const TurnState& s, int unitId, int unitSide) {
+    if (!s.running) return false;
+    if (s.phase != Phase::Actions) return false;
+    if (unitSide != s.activeSide) return false;
+    return !hasActed(s, unitId);
+}
+
+bool markMoved(TurnState& s, int unitId, int unitSide, std::string& err) {
+    return markActed(s, unitId, unitSide, err);   // one flag, not two
+}
+
+bool hasBuiltThisTurn(const TurnState& s, const Hex& factory) {
+    for (const Hex& h : s.builtThisTurn) if (hexEqual(h, factory)) return true;
+    return false;
+}
+
+bool canBuildAt(const TurnState& s, const Hex& factory, int side) {
+    if (!s.running) return false;
+    if (s.phase != Phase::Actions) return false;
+    if (side != s.activeSide) return false;
+    return !hasBuiltThisTurn(s, factory);
+}
+
+bool markBuilt(TurnState& s, const Hex& factory, int side, std::string& err) {
+    if (!s.running)                { err = "no match is running"; return false; }
+    if (s.phase == Phase::MatchOver) { err = "the match is over"; return false; }
+    if (s.phase == Phase::TurnPending) { err = "the turn has not begun"; return false; }
+    if (s.phase == Phase::StartOfTurn) {
+        err = "start-of-turn repair has not been applied yet"; return false;
+    }
+    if (!validSide(side))          { err = "invalid side"; return false; }
+    if (side != s.activeSide)      {
+        err = "side " + num(side) + " is not the active side"; return false;
+    }
+    if (hasBuiltThisTurn(s, factory)) {
+        err = "that factory has already taken its build this turn"; return false;
+    }
+    s.builtThisTurn.push_back(factory);
+    return true;
 }
 
 bool canAct(const TurnState& s, int unitId, int unitSide) {
@@ -210,6 +267,7 @@ MatchResult endTurn(TurnState& s, const BoardSnapshot& b) {
         s.phase = Phase::TurnPending;
         return s.result;
     }
+    s.builtThisTurn.clear();         // PASS-1 BUG (T-TURN-10): per ROUND, not per side
 
     // The round is complete. Reading 2 (spec/turn_spec.md): turn `turnCap` is a
     // playable turn, so the tiebreak resolves at the END of that round.
@@ -262,6 +320,8 @@ MatchResult resolveAtCap(const BoardSnapshot& b) {
 std::string stateDigest(const TurnState& s) {
     std::vector<int> acted = s.acted;
     std::sort(acted.begin(), acted.end());       // order-independent by construction
+    std::vector<Hex> built = s.builtThisTurn;
+    sortCanonical(built);
 
     std::string acc;
     acc += "t" + num(s.turnNumber) + "/" + num(s.turnCap);
@@ -270,6 +330,9 @@ std::string stateDigest(const TurnState& s) {
     acc += "|phase" + num(static_cast<int>(s.phase)) + ":run" + num(s.running ? 1 : 0);
     acc += "|acted";
     for (int id : acted) acc += num(id) + ",";
+    // No `|moved` section: pass 1 has one flag, so there is no second set to digest.
+    acc += "|built";
+    for (const Hex& h : built) acc += num(h.q) + ":" + num(h.r) + ",";
     acc += "|res" + num(static_cast<int>(s.result.tier)) + ":" +
            num(static_cast<int>(s.result.cause)) + ":" +
            num(s.result.winner) + ":" + num(s.result.decidedByKey);

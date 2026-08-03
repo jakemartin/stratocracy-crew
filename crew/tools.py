@@ -73,7 +73,7 @@ WEEK1_ROWS = {
         "impl": "Turn.cpp",
         "sources": ["Turn.cpp", "Economy.cpp", "Hex.cpp", "Data.cpp", "Combat.cpp",
                     "test_turn.cpp"],
-        "stem": "test_turn_runner", "tests": "T-TURN-01..09",
+        "stem": "test_turn_runner", "tests": "T-TURN-01..10",
     },
     "ai": {
         "row": 6, "system": "Opponent AI (baseline)", "spec": "spec/ai_spec.md",
@@ -285,7 +285,7 @@ def run_week1_gate_fn() -> dict:
     return {"rows": rows, "passed": passed,
             "summary": ("WEEK-1 GATE PASS — rows 1-3 (T-HEX-01..07, T-DATA-01..04+06, "
                         "T-MOVE-01..06) + row 4 (T-FAME-01..09) + row 5 "
-                        "(T-TURN-01..09) + row 6 (T-AI-01..06 + GATE-AI-SMOKE) + "
+                        "(T-TURN-01..10) + row 6 (T-AI-01..06 + GATE-AI-SMOKE) + "
                         "row 7's SUBSET of T-SCN (see the row's not-covered list) + "
                         "the debug driver (GATE-DRV-01..11)" if passed else
                         "WEEK-1 GATE BLOCK — " + "; ".join(
@@ -447,7 +447,7 @@ try:
         math, data tables, movement & pathfinding, capture & Fame economy, turn loop
         & win/tiebreak, opponent AI, scenario file & validator) plus the debug-command
         driver. Returns PASS only if T-HEX-01..07, T-DATA-01..04+06, T-MOVE-01..06,
-        T-FAME-01..09, T-TURN-01..09, T-AI-01..06 and row 7's SUBSET of T-SCN all
+        T-FAME-01..09, T-TURN-01..10, T-AI-01..06 and row 7's SUBSET of T-SCN all
         hold, and names the failing IDs per row otherwise. Takes no arguments."""
         r = run_week1_gate_fn()
         return r["summary"] + "\n\n" + "\n\n".join(row["log"] for row in r["rows"])

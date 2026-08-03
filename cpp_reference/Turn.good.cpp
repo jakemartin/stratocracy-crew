@@ -118,7 +118,13 @@ MatchResult beginTurn(TurnState& s, const BoardSnapshot& b) {
         return s.result;
     }
 
-    s.acted.clear();                 // a new turn: every unit is unacted again
+    // One moment renews everything that is scoped to a turn. T-TURN-01(e) and
+    // T-TURN-10 name THIS line: both per-unit flags and the per-factory build
+    // allowance clear at the start of the owner's turn, not at the end of it and not
+    // per round. A factory captured mid-round therefore arrives with a clear record.
+    s.moved.clear();                 // a new turn: every unit may move again
+    s.acted.clear();                 // ... and act again -- two sets, cleared together
+    s.builtThisTurn.clear();         // ... and every factory may build again
     s.phase = Phase::StartOfTurn;
     return s.result;
 }
@@ -176,7 +182,71 @@ bool markActed(TurnState& s, int unitId, int unitSide, std::string& err) {
     if (hasActed(s, unitId)) {
         err = "unit " + num(unitId) + " has already acted this turn"; return false;
     }
-    s.acted.push_back(unitId);
+    s.acted.push_back(unitId);       // the MOVE flag is deliberately not touched
+    return true;
+}
+
+// The move half of T-TURN-01. Deliberately a mirror of the act half rather than a
+// shared helper parameterised by which set to poke: the two must stay independent,
+// and a single code path taking a set is one refactor away from taking one set.
+bool hasMoved(const TurnState& s, int unitId) {
+    for (int id : s.moved) if (id == unitId) return true;
+    return false;
+}
+
+bool canMove(const TurnState& s, int unitId, int unitSide) {
+    if (!s.running) return false;
+    if (s.phase != Phase::Actions) return false;
+    if (unitSide != s.activeSide) return false;      // strict alternation (§2.1)
+    return !hasMoved(s, unitId);                     // at most one move per own turn
+}
+
+bool markMoved(TurnState& s, int unitId, int unitSide, std::string& err) {
+    if (!s.running)                { err = "no match is running"; return false; }
+    if (s.phase == Phase::MatchOver) { err = "the match is over"; return false; }
+    if (s.phase == Phase::TurnPending) { err = "the turn has not begun"; return false; }
+    if (s.phase == Phase::StartOfTurn) {
+        err = "start-of-turn repair has not been applied yet"; return false;
+    }
+    if (!validSide(unitSide))      { err = "invalid side"; return false; }
+    if (unitSide != s.activeSide)  {
+        err = "side " + num(unitSide) + " is not the active side"; return false;
+    }
+    if (hasMoved(s, unitId)) {
+        err = "unit " + num(unitId) + " has already moved this turn"; return false;
+    }
+    s.moved.push_back(unitId);       // the ACT flag is deliberately not touched
+    return true;
+}
+
+// --- T-TURN-10: one build per factory per turn ------------------------------------
+bool hasBuiltThisTurn(const TurnState& s, const Hex& factory) {
+    for (const Hex& h : s.builtThisTurn) if (hexEqual(h, factory)) return true;
+    return false;
+}
+
+bool canBuildAt(const TurnState& s, const Hex& factory, int side) {
+    if (!s.running) return false;
+    if (s.phase != Phase::Actions) return false;
+    if (side != s.activeSide) return false;          // player and AI alike (§2.7)
+    return !hasBuiltThisTurn(s, factory);
+}
+
+bool markBuilt(TurnState& s, const Hex& factory, int side, std::string& err) {
+    if (!s.running)                { err = "no match is running"; return false; }
+    if (s.phase == Phase::MatchOver) { err = "the match is over"; return false; }
+    if (s.phase == Phase::TurnPending) { err = "the turn has not begun"; return false; }
+    if (s.phase == Phase::StartOfTurn) {
+        err = "start-of-turn repair has not been applied yet"; return false;
+    }
+    if (!validSide(side))          { err = "invalid side"; return false; }
+    if (side != s.activeSide)      {
+        err = "side " + num(side) + " is not the active side"; return false;
+    }
+    if (hasBuiltThisTurn(s, factory)) {
+        err = "that factory has already taken its build this turn"; return false;
+    }
+    s.builtThisTurn.push_back(factory);
     return true;
 }
 
@@ -251,6 +321,12 @@ MatchResult resolveAtCap(const BoardSnapshot& b) {
 std::string stateDigest(const TurnState& s) {
     std::vector<int> acted = s.acted;
     std::sort(acted.begin(), acted.end());       // order-independent by construction
+    std::vector<int> moved = s.moved;
+    std::sort(moved.begin(), moved.end());
+    // Canonical hex order (§4.7 shared conventions), so the digest is a property of
+    // WHICH factories built, never of the order the caller happened to build them in.
+    std::vector<Hex> built = s.builtThisTurn;
+    sortCanonical(built);
 
     std::string acc;
     acc += "t" + num(s.turnNumber) + "/" + num(s.turnCap);
@@ -259,6 +335,10 @@ std::string stateDigest(const TurnState& s) {
     acc += "|phase" + num(static_cast<int>(s.phase)) + ":run" + num(s.running ? 1 : 0);
     acc += "|acted";
     for (int id : acted) acc += num(id) + ",";
+    acc += "|moved";
+    for (int id : moved) acc += num(id) + ",";
+    acc += "|built";
+    for (const Hex& h : built) acc += num(h.q) + ":" + num(h.r) + ",";
     acc += "|res" + num(static_cast<int>(s.result.tier)) + ":" +
            num(static_cast<int>(s.result.cause)) + ":" +
            num(s.result.winner) + ":" + num(s.result.decidedByKey);

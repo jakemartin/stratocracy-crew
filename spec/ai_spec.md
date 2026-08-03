@@ -87,7 +87,9 @@ answer and leaves the term undefined; none adds a rule the GDD does not have.
    **value lost** is the attacker's own kill award, unprorated, because that is
    what the enemy actually collects (§2.7). Both prices come from `killAward`.
 5. **The advance goal when no flag is designated.** §2.9 says "toward the enemy
-   flag"; `isFlag` is Stub 7's placement field (row 7, unbuilt) and Q10 is open,
+   flag"; `isFlag` is Stub 7's placement field (row 7, **built** at `9086d6a` on a
+   partial pass, so the field exists and its ledger row does not flip) and Q10 is
+   open on exactness,
    so with no flag on the board the goal is the **canonically first enemy unit**.
 
 ## Determinism / constraints

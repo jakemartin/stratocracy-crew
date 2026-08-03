@@ -76,12 +76,15 @@ std::vector<const AiUnit*> enemiesOf(const AiState& s, int side) {
     return out;
 }
 
-// The side's own units that may still act, in canonical hex order. Turn.h decides
-// "may still act"; the AI only asks.
+// The side's own units that may still do something, in canonical hex order. Turn.h
+// decides; the AI only asks. Two flags mean two questions -- this is NOT one of this
+// build's deliberate pass-1 defects, which are confined to T-AI-05 and T-AI-06, so
+// it tracks the good build here rather than failing T-AI-01 for an unrelated reason.
 std::vector<const AiUnit*> actableOf(const AiState& s, int side) {
     std::vector<const AiUnit*> out;
     for (const AiUnit& u : s.units)
-        if (u.side == side && canAct(s.turn, u.id, u.side)) out.push_back(&u);
+        if (u.side == side && (canAct(s.turn, u.id, u.side) ||
+                               canMove(s.turn, u.id, u.side))) out.push_back(&u);
     std::stable_sort(out.begin(), out.end(), [](const AiUnit* a, const AiUnit* b) {
         return hexLess(a->hex, b->hex);
     });
@@ -123,8 +126,9 @@ bool unitAction(const AiState& s, int side, const Board& board,
         if (here != nullptr && here->owner != side) return false;
     }
 
-    // (2) attack, if anything is in range from where the unit stands.
-    {
+    // (2) attack, if anything is in range from where the unit stands and the act
+    // flag is unspent (see actableOf: flag handling tracks the good build).
+    if (canAct(s.turn, unit.id, unit.side)) {
         const AiUnit* best = nullptr;
         int bestDamage = 0;
         for (const AiUnit* e : enemies) {                  // canonical order already
@@ -145,6 +149,9 @@ bool unitAction(const AiState& s, int side, const Board& board,
             return true;
         }
     }
+
+    // Everything below moves the unit, so a spent move flag ends its turn here.
+    if (!canMove(s.turn, unit.id, unit.side)) return false;
 
     const std::vector<ReachEntry> reach =
         reachable(board, s.terrainDefs, unit.hex, ud.move);        // Move.h decides

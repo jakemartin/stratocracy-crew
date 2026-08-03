@@ -59,12 +59,11 @@ struct Session {
     // on exactness either way.
     int flagUnit[SIDE_COUNT] = {-1, -1};
 
-    // Row 6. Factories built at this turn, cleared at each turn start. §2.7's "one
-    // build per factory per turn" is turn-scoped and Economy.h enforces only the
-    // per-PENDING half, which was the whole of it while no module owned the turn --
-    // see the change request in spec/ai_spec.md. Bookkeeping, not a rule: it is
-    // handed to the AI as a board fact and gates no player command.
-    std::vector<Hex> builtThisTurn;
+    // The per-factory build record MOVED TO ROW 5 (TurnState::builtThisTurn) when
+    // T-TURN-10 was minted. It was driver bookkeeping here, read by the AI and
+    // gating no player command, which is exactly why a second player build at one
+    // factory was accepted. It is now a rule Turn.h owns and enforces for player and
+    // AI alike; the driver reads it off `match` and keeps no copy.
 
     // The AI's buildlist (§2.9), as defIndexes. Empty until `ai buildlist` sets it
     // or a fixture supplies one; the driver invents no ratio.

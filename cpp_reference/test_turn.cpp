@@ -1,4 +1,4 @@
-// Test Engineer's gate for §4.11 row 5 — Turn loop & win/tiebreak (T-TURN-01..09).
+// Test Engineer's gate for §4.11 row 5 — Turn loop & win/tiebreak (T-TURN-01..10).
 //
 // Row 5 is where the turn finally has an owner: rows 3 and 4 declined it, so every
 // deferred turn-ownership question is asserted here. T-TURN-04/05/06/07 encode §2.8's
@@ -105,9 +105,16 @@ int main(int argc, char** argv) {
         const std::string d1 = stateDigest(s);
         if (markActed(s, 1, 0, e)) ok01 = false;
         if (stateDigest(s) != d1) ok01 = false;
+        // (d) ACTING NEVER CONSUMES THE MOVE. Unit 1 has spent its act above and is
+        // still a legal mover -- this is the half the shipped ad77b13 build gets
+        // wrong, where one shared flag makes the two indistinguishable.
+        if (!canMove(s, 1, 0)) ok01 = false;
+        if (hasMoved(s, 1)) ok01 = false;
         // The inactive side may not act at all.
         if (canAct(s, 9, 1)) ok01 = false;
         if (markActed(s, 9, 1, e)) ok01 = false;
+        if (canMove(s, 9, 1)) ok01 = false;
+        if (markMoved(s, 9, 1, e)) ok01 = false;
         if (stateDigest(s) != d1) ok01 = false;
 
         // Strict alternation: side 0 ends, side 1 is up, and side 0 is now the one
@@ -141,6 +148,66 @@ int main(int argc, char** argv) {
         for (int i = 1; i <= 3; ++i) if (!hasActed(p, i) || !hasActed(q, i)) ok01 = false;
     }
     check("T-TURN-01 alternation-and-once-per-own-turn", ok01);
+
+    // --- T-TURN-01 (a)-(e): TWO INDEPENDENT FLAGS, IN EITHER ORDER ---------------
+    // Director ruling, 2026-08-03. The gate asserts the FLAGS, never a state match:
+    // (b) is deliberately not compared against (a) by digest, because the two orders
+    // attack from different hexes and are not state-equivalent.
+    bool ok01b = true;
+    {
+        const BoardSnapshot b = quietBoard();
+        std::string e;
+
+        // (a) move-then-attack by one unit COMPLETES.
+        TurnState A;
+        initMatch(A, 0, 20, err); openTurn(A, b);
+        if (!markMoved(A, 1, 0, e)) ok01b = false;
+        if (!markActed(A, 1, 0, e)) ok01b = false;
+        if (!hasMoved(A, 1) || !hasActed(A, 1)) ok01b = false;
+
+        // (b) attack-then-move by the same unit COMPLETES, leaving both flags spent
+        // exactly as (a) leaves them.
+        TurnState B;
+        initMatch(B, 0, 20, err); openTurn(B, b);
+        if (!markActed(B, 1, 0, e)) ok01b = false;
+        if (!markMoved(B, 1, 0, e)) ok01b = false;
+        if (!hasMoved(B, 1) || !hasActed(B, 1)) ok01b = false;
+        // The flags match; the states need not, and the gate does not ask them to.
+        if (hasMoved(A, 1) != hasMoved(B, 1)) ok01b = false;
+        if (hasActed(A, 1) != hasActed(B, 1)) ok01b = false;
+
+        // (c) a second move, or a second act, is REFUSED whichever the unit spent
+        // first -- checked from BOTH orders, since a one-flag implementation can
+        // pass one of these and fail the other.
+        if (canMove(A, 1, 0) || canAct(A, 1, 0)) ok01b = false;
+        if (canMove(B, 1, 0) || canAct(B, 1, 0)) ok01b = false;
+        if (markMoved(A, 1, 0, e) || markActed(A, 1, 0, e)) ok01b = false;
+        if (markMoved(B, 1, 0, e) || markActed(B, 1, 0, e)) ok01b = false;
+
+        // (d) a refused command changes nothing (§4.9): neither flag is set and no
+        // digest moves. Unit 2 has spent NEITHER flag, so a refusal aimed at it must
+        // leave both unspent.
+        const std::string dA = stateDigest(A);
+        if (markActed(A, 1, 0, e)) ok01b = false;
+        if (stateDigest(A) != dA) ok01b = false;
+        if (hasMoved(A, 2) || hasActed(A, 2)) ok01b = false;
+        // A refusal on the INACTIVE side likewise sets neither flag.
+        if (markMoved(A, 2, 1, e)) ok01b = false;
+        if (hasMoved(A, 2)) ok01b = false;
+        if (stateDigest(A) != dA) ok01b = false;
+
+        // (e) BOTH flags clear at the start of the owner's turn -- a unit that spent
+        // both last turn moves AND acts again on this one.
+        endTurn(A, b);                       // side 0 -> side 1
+        openTurn(A, b);
+        endTurn(A, b);                       // round complete; back to side 0
+        openTurn(A, b);
+        if (hasMoved(A, 1) || hasActed(A, 1)) ok01b = false;
+        if (!canMove(A, 1, 0) || !canAct(A, 1, 0)) ok01b = false;
+        if (!markMoved(A, 1, 0, e)) ok01b = false;
+        if (!markActed(A, 1, 0, e)) ok01b = false;
+    }
+    check("T-TURN-01 two-independent-flags-in-either-order", ok01b);
 
     // --- T-TURN-02 -------------------------------------------------------------
     // A downed flag ends the match immediately: Decisive for the killer, and the
@@ -554,6 +621,65 @@ int main(int argc, char** argv) {
         if (!ok09 || t1.empty() || t1.back().find("Marginal") == std::string::npos) ok09 = false;
     }
     check("T-TURN-09 determinism", ok09);
+
+    // --- T-TURN-10 --------------------------------------------------------------
+    // One build per factory per turn, player and AI alike (§2.7; Q8(b), ruled). The
+    // allowance renews at the start of the OWNER's turn -- the same moment the two
+    // per-unit flags clear -- which is the half a per-ROUND reading gets wrong.
+    bool ok10 = true;
+    {
+        const BoardSnapshot b = quietBoard();
+        std::string e;
+        const Hex F1{3, 4};          // two distinct factories
+        const Hex F2{5, 2};
+
+        TurnState s;
+        if (!initMatch(s, 0, 20, err)) ok10 = false;
+        openTurn(s, b);
+
+        // The first build at F1 is allowed and recorded.
+        if (!canBuildAt(s, F1, 0)) ok10 = false;
+        if (!markBuilt(s, F1, 0, e)) ok10 = false;
+        if (!hasBuiltThisTurn(s, F1)) ok10 = false;
+
+        // A SECOND build naming that same factory is refused, and the refusal changes
+        // nothing -- Fame is committed at queue time, so a refused Build must never
+        // reach the economy.
+        const std::string d0 = stateDigest(s);
+        if (canBuildAt(s, F1, 0)) ok10 = false;
+        if (markBuilt(s, F1, 0, e)) ok10 = false;
+        if (stateDigest(s) != d0) ok10 = false;
+
+        // A DIFFERENT factory is unaffected: the record is per-factory, not per-side.
+        if (!canBuildAt(s, F2, 0)) ok10 = false;
+        if (!markBuilt(s, F2, 0, e)) ok10 = false;
+
+        // The inactive side may not build at all.
+        if (canBuildAt(s, Hex{7, 7}, 1)) ok10 = false;
+        if (markBuilt(s, Hex{7, 7}, 1, e)) ok10 = false;
+
+        // THE RENEWAL BOUNDARY. Side 0 built at F1 this round. Side 1's turn now
+        // begins WITHIN THE SAME ROUND -- turnNumber has not advanced -- and F1's
+        // record must already be clear, which is what "renews at the start of the
+        // owner's turn" means and what a per-round clear would fail. This is the case
+        // a factory captured mid-round reaches.
+        const int roundBefore = s.turnNumber;
+        endTurn(s, b);
+        if (s.activeSide != 1) ok10 = false;
+        openTurn(s, b);
+        if (s.turnNumber != roundBefore) ok10 = false;   // still the same round
+        if (hasBuiltThisTurn(s, F1)) ok10 = false;
+        if (!canBuildAt(s, F1, 1)) ok10 = false;
+        if (!markBuilt(s, F1, 1, e)) ok10 = false;
+
+        // And it renews again on the next round, for the original owner.
+        endTurn(s, b);
+        openTurn(s, b);
+        if (s.turnNumber != roundBefore + 1) ok10 = false;
+        if (hasBuiltThisTurn(s, F1) || hasBuiltThisTurn(s, F2)) ok10 = false;
+        if (!canBuildAt(s, F1, 0)) ok10 = false;
+    }
+    check("T-TURN-10 one-build-per-factory-per-turn", ok10);
 
     std::printf("\n%d/%d passed\n", g_total - g_fail, g_total);
     return g_fail == 0 ? 0 : 1;

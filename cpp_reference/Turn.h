@@ -18,6 +18,7 @@
 
 #include "Combat.h"    // Unit, repairAmount -- verified at 5ffa8d6 (T-REPAIR-01..07)
 #include "Economy.h"   // SIDE_COUNT -- §4.11 declares row 5's dependency on row 4
+#include "Hex.h"       // Hex -- the per-factory build record's key (T-TURN-10)
 
 namespace strat {
 
@@ -86,7 +87,17 @@ struct TurnState {
     int   sidesEnded = 0;      // sides that have ended their turn this round
     Phase phase   = Phase::TurnPending;
     bool  running = false;
-    std::vector<int> acted;    // unit ids that have acted THIS turn (§4.9 `hasActed`)
+    // TWO INDEPENDENT PER-UNIT FLAGS, not one (T-TURN-01). A unit may move at most
+    // once AND act at most once in its own turn, in EITHER order, and neither is
+    // required. They are separate sets precisely so that neither can consume the
+    // other: one shared set is the pass-1 reading, and it makes §2.1's move-then-act
+    // sequence unimplementable.
+    std::vector<int> moved;    // unit ids that have MOVED this turn
+    std::vector<int> acted;    // unit ids that have ACTED this turn (§4.9 `hasActed`)
+    // T-TURN-10's per-factory record. It lives here and not in Economy.h because the
+    // check needs the turn, and row 4 takes the turn number as an argument rather
+    // than owning it (§3) -- Stub 4 gates the half it can enforce without a turn.
+    std::vector<Hex> builtThisTurn;
     MatchResult result;
 };
 
@@ -102,7 +113,11 @@ bool initMatch(TurnState& s, int firstSide, int turnCap, std::string& err);
 MatchResult checkImmediate(TurnState& s, const BoardSnapshot& b);
 
 // Start of `activeSide`'s turn: the immediate check, then §2.8's domination backstop
-// (T-TURN-03), then the acted set clears and the phase becomes StartOfTurn.
+// (T-TURN-03), then BOTH per-unit flag sets and the per-factory build record clear,
+// and the phase becomes StartOfTurn. That single moment is what T-TURN-01(e) and
+// T-TURN-10 both name -- the flags and the build allowance renew together, at the
+// start of the OWNER's turn, so a factory that changes hands mid-round arrives with
+// a clear record for its new owner.
 MatchResult beginTurn(TurnState& s, const BoardSnapshot& b);
 
 // One unit offered for start-of-turn repair. `unit` and the two board facts are the
@@ -129,12 +144,32 @@ std::vector<RepairApplied> applyStartOfTurnRepair(TurnState& s,
 
 // T-TURN-01. False for a unit that is not the active side's, has already acted this
 // turn, or is acting outside the Actions phase.
+//
+// ACTING NEVER CONSUMES THE MOVE and moving never consumes the act: canAct reads the
+// `acted` set alone and canMove the `moved` set alone, which is the whole mechanism
+// behind "in either order". A unit that has attacked from where it stands is still a
+// legal mover this turn; a unit that has moved is still a legal attacker.
 bool canAct(const TurnState& s, int unitId, int unitSide);
 bool hasActed(const TurnState& s, int unitId);
+bool canMove(const TurnState& s, int unitId, int unitSide);
+bool hasMoved(const TurnState& s, int unitId);
 
-// Records that a unit acted. Refuses -- and changes nothing -- whenever canAct is
-// false, filling `err` with the reason.
+// Record that a unit acted / moved. Each refuses -- and changes nothing -- whenever
+// its own predicate is false, filling `err` with the reason. Neither touches the
+// other's set.
 bool markActed(TurnState& s, int unitId, int unitSide, std::string& err);
+bool markMoved(TurnState& s, int unitId, int unitSide, std::string& err);
+
+// T-TURN-10 (§2.7; Q8(b), ruled). One build per factory per turn, player and AI
+// alike: a Build naming a factory that has already taken its build this turn is
+// REFUSED, and the refusal changes nothing -- Fame is committed at queue time
+// (Q8(c)) and a refused Build never queues, so the caller must consult this BEFORE
+// it charges anything. BOTH dispositions of the first build count against the
+// allowance: one that spawned immediately, and one that waits and holds the factory's
+// slot (T-FAME-04). The slot and this allowance are two rules, not one.
+bool hasBuiltThisTurn(const TurnState& s, const Hex& factory);
+bool canBuildAt(const TurnState& s, const Hex& factory, int side);
+bool markBuilt(TurnState& s, const Hex& factory, int side, std::string& err);
 
 // Ends the active side's turn. Strict alternation: the next side is the next in
 // order. When every side has ended its turn the round is complete and the turn

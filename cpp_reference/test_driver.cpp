@@ -323,11 +323,16 @@ int main(int argc, char** argv) {
         if (!contains(run(m, "move 2 3 0"), "refused")) ok08 = false;
         if (stateHash(m) != before) ok08 = false;
 
-        // The active side acts once, and only once.
-        if (!canAct(m.match, 1, 0)) ok08 = false;
+        // The active side MOVES once, and only once. A move spends the MOVE flag and
+        // leaves the act unspent (T-TURN-01) -- this block asserted `hasActed` after
+        // a move while one shared flag existed, which is the defect the rebuild
+        // removes: a moved unit could not then attack.
+        if (!canMove(m.match, 1, 0)) ok08 = false;
         if (!contains(run(m, "move 1 1 1"), "moved")) ok08 = false;
-        if (!hasActed(m.match, 1)) ok08 = false;
-        if (canAct(m.match, 1, 0)) ok08 = false;
+        if (!hasMoved(m.match, 1)) ok08 = false;
+        if (hasActed(m.match, 1)) ok08 = false;      // moving never consumes the act
+        if (canMove(m.match, 1, 0)) ok08 = false;
+        if (!canAct(m.match, 1, 0)) ok08 = false;    // ... so it is still an attacker
         before = stateHash(m);
         if (!contains(run(m, "move 1 1 0"), "refused")) ok08 = false;
         if (stateHash(m) != before) ok08 = false;
@@ -343,8 +348,35 @@ int main(int argc, char** argv) {
         if (m.match.activeSide != 1) ok08 = false;
         if (!canAct(m.match, 2, 1)) ok08 = false;
         if (canAct(m.match, 1, 0)) ok08 = false;
+        if (canMove(m.match, 1, 0)) ok08 = false;
         if (!contains(run(m, "income 0"), "refused")) ok08 = false;
         if (contains(run(m, "income 1"), "refused")) ok08 = false;
+
+        // T-TURN-10 reaches the driver: a second `build` at one factory is REFUSED,
+        // and the refusal changes nothing -- Fame included, since Fame is committed
+        // at queue time. Before the rebuild this command was accepted, because the
+        // driver's own record gated no player command and Economy.h can only see the
+        // pending-slot half.
+        Session bd;
+        sessionInit(bd, dir, e);
+        loadFixture(bd, "contested", e);
+        // (0,0) is a factory on this fixture and the Infantry standing on it captures
+        // it at the match's first start-of-turn tick, which is also where the side's
+        // opening Fame is already in hand -- no setter is needed for either.
+        run(bd, "place 0 Infantry 0 0");
+        run(bd, "match 0 20");
+        if (!bd.match.running) ok08 = false;
+        if (contains(run(bd, "build 0 Infantry 0 0"), "refused")) ok08 = false;
+        if (!hasBuiltThisTurn(bd.match, offsetToAxial(0, 0))) ok08 = false;
+
+        // The second build at that same factory is refused, and NOTHING moves --
+        // Fame included, which is the half that matters, since Fame is committed at
+        // queue time and is not refundable.
+        const std::string beforeBuild = stateHash(bd);
+        const int fameBefore = bd.economy.side[0].fameTotal;
+        if (!contains(run(bd, "build 0 Infantry 0 0"), "refused")) ok08 = false;
+        if (stateHash(bd) != beforeBuild) ok08 = false;
+        if (bd.economy.side[0].fameTotal != fameBefore) ok08 = false;
     }
     check("GATE-DRV-08 turn-ownership-is-the-turn-modules", ok08);
 
