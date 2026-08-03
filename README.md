@@ -220,11 +220,11 @@ at distance 2: Artillery deals 5
 **The driver contains no rules.** Reach, path and move delegate to `Move.h`; damage and
 counter eligibility to `Combat.h`; every stat to `Data.h` over `data/*.csv`; distance and
 adjacency to `Hex.h`; capture, income and build to `Economy.h`; alternation, act flags,
-the start-of-turn moment and the §2.8 result to `Turn.h`. Where an answer would need
-§4.11 rows 6–8 — what the AI would do, what a scenario file looks like — it **refuses
-the command instead of deciding it**. That is the whole design: a debug tool that
-decides anything becomes a second rules implementation, and then the gated modules are
-no longer what the game does.
+the start-of-turn moment and the §2.8 result to `Turn.h`; the opponent's decisions to
+`Ai.h`. Where an answer would need §4.11 rows 7–8 — what a scenario file looks like —
+it **refuses the command instead of deciding it**. That is the whole design: a debug
+tool that decides anything becomes a second rules implementation, and then the gated
+modules are no longer what the game does.
 
 `forecast` and `attack` call **one** computation, so §2.6's "the forecast the player sees
 is exactly what resolves" is structural rather than merely tested — **GATE-DRV-03** then

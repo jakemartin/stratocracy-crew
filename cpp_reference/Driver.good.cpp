@@ -1,9 +1,9 @@
 // Stratocracy — debug-command driver implementation (§4.4 week 1).
 //
 // CONTAINS NO RULES. Every rule decision below is a call into Hex.h, Data.h,
-// Move.h, Combat.h, Economy.h or Turn.h. Where a question is not answerable by one
-// of those six -- what a scenario file looks like, what the AI would do -- the
-// command is refused rather than decided, because rows 6-8 hold no code
+// Move.h, Combat.h, Economy.h, Turn.h or Ai.h. Where a question is not answerable
+// by one of those seven -- what a scenario file looks like -- the command is
+// refused rather than decided, because rows 7-8 hold no code
 // (spec/driver_spec.md).
 #include "Driver.h"
 
@@ -508,7 +508,7 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
         out.push_back("row 5: match <firstSide> <turnCap> | endturn | standings |");
         out.push_back("       result | flag <side> <id>");
         out.push_back("row 6: ai | ai buildlist <Type>...   (plays the active side's turn)");
-        out.push_back("NOTE: no AI and no scenario file -- rows 6-8 hold no code. With no");
+        out.push_back("NOTE: no scenario file -- rows 7-8 hold no code. With no");
         out.push_back("match running the board is a free sandbox and 'turn <n>' is a debug");
         out.push_back("setter; 'match' hands the turn number to the turn loop, which then");
         out.push_back("refuses the setter. 'flag' is a debug designation, not scenario data.");
