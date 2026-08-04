@@ -95,12 +95,17 @@ UiWorld uiWorldOf(const Session& s) {
     w.terrain  = &s.terrainDefs;
     w.economy  = &s.economy;
     w.turn     = &s.match;
+    // The guided seats come from the loaded file and from nowhere else. A built-in
+    // fixture has no guided opening (`fixture` says so), so this stays null and every
+    // unit is unmarked -- absence, not a default.
+    w.guided   = s.scenarioLoaded ? &s.scenario.guided : nullptr;
     for (const DriverUnit& u : s.units) {
         UiUnit v;
         v.id       = u.id;
         v.side     = u.side;
         v.defIndex = u.defIndex;
         v.hex      = u.hex;
+        v.placement = u.placement;
         v.unit     = combatUnit(s, u);
         v.isFlag   = (u.side >= 0 && u.side < SIDE_COUNT && s.flagUnit[u.side] == u.id);
         w.units.push_back(v);
@@ -113,6 +118,12 @@ UiWorld uiWorldOf(const Session& s) {
 // the same snapshot through Ui.h and comparing. Hexes are omitted from the render
 // because `map` already prints the board; the per-hex half of the snapshot is
 // exercised by the gate rather than by the eye.
+//
+// It renders the SNAPSHOT, which is not the whole view model: the presentation block's
+// two members (§2.11.1's DONE bit, §2.11.6's `lockedThisTurn`) are owned by the
+// selection machine and the guidance layer, and this driver runs neither. They are
+// absent here because nothing in a headless session produces them, not because the
+// view model omits them.
 static void printUiSnapshot(const Session& s, std::vector<std::string>& out) {
     const UiWorld    w = uiWorldOf(s);
     const UiSnapshot v = buildUiSnapshot(w);
@@ -126,7 +137,8 @@ static void printUiSnapshot(const Session& s, std::vector<std::string>& out) {
                       " fameCombat " + num(v.side[i].fameCombat) +
                       " objectivesHeld " + num(v.side[i].objectivesHeld) + " of " +
                       num(v.objectiveTotal) +
-                      " survivingHP " + num(v.side[i].survivingHp));
+                      " survivingHP " + num(v.side[i].survivingHp) +
+                      " incomePerTurn " + num(v.side[i].incomePerTurn));
     }
     for (const UiUnitView& u : v.units) {
         int col = 0, row = 0;
@@ -141,7 +153,21 @@ static void printUiSnapshot(const Session& s, std::vector<std::string>& out) {
                       (u.isFlag ? " FLAG" : "") +
                       " hasMoved " + num(u.hasMoved ? 1 : 0) +
                       " hasActed " + num(u.hasActed ? 1 : 0) +
-                      " captureProgress " + num(u.captureProgress));
+                      " captureProgress " + num(u.captureProgress) +
+                      (u.isGuidedMarked ? " GUIDED-MARKED" : ""));
+    }
+    // The per-factory group. `spawnBlocked` and `buildWaiting` print SEPARATELY and
+    // are never folded into one column: the state §2.11.5 must display is a boxed-in
+    // factory with NOTHING queued, which is blocked and not waiting, and a single
+    // column could not tell it from a factory that simply has a build in flight.
+    for (const UiFactoryView& f : v.factories) {
+        int col = 0, row = 0;
+        axialToOffset(f.hex, col, row);
+        out.push_back("factory (" + num(col) + "," + num(row) + ") owner " +
+                      (f.owner == OWNER_NEUTRAL ? std::string("neutral") : num(f.owner)) +
+                      " hasBuiltThisTurn " + num(f.hasBuiltThisTurn ? 1 : 0) +
+                      " buildWaiting " + num(f.buildWaiting ? 1 : 0) +
+                      " spawnBlocked " + num(f.spawnBlocked ? 1 : 0));
     }
 }
 
@@ -334,6 +360,7 @@ bool installScenario(Session& s, const Scenario& sc, std::string& err) {
         u.side     = p.side;
         u.defIndex = defIndex;
         u.hex      = p.hex;
+        u.placement = p.hex;        // the file's deployment hex; the guided seat reads this
         u.hp       = s.unitDefs[defIndex].hpMax;
         next.units.push_back(u);
         // The designation comes from the FILE now. T-SCN-01 has already checked it is
@@ -796,6 +823,7 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
         DriverUnit u;
         u.id = s.nextUnitId++;
         u.side = side; u.defIndex = defIndex; u.hex = h; u.hp = s.unitDefs[defIndex].hpMax;
+        u.placement = h;            // hand-placed: its own hex, which no guidedOpening names
         s.units.push_back(u);
         out.push_back("placed #" + num(u.id) + " " + s.unitDefs[defIndex].id +
                       " side " + num(side) + " at (" + num(col) + "," + num(row) + ")");
@@ -1061,6 +1089,7 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
             DriverUnit u;
             u.id = s.nextUnitId++;
             u.side = sp.side; u.defIndex = sp.defIndex; u.hex = sp.hex;
+            u.placement = sp.hex;   // spawned, not deployed: unmarked by construction
             u.hp = s.unitDefs[sp.defIndex].hpMax;
             s.units.push_back(u);
             int sc = 0, sr = 0;

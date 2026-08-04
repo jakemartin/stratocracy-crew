@@ -27,6 +27,13 @@ struct DriverUnit {
     int defIndex = 0;
     Hex hex;
     int hp       = 0;
+    // Where this unit was DEPLOYED, which stops being `hex` the moment it moves.
+    // Stub 8's `isGuidedMarked` is a property of the placement rather than of the
+    // current hex, so the snapshot cannot derive it without this. A unit that was
+    // never deployed from a scenario -- one the human placed with `unit`, or one a
+    // factory spawned -- records the hex it appeared on, which no guidedOpening
+    // entry names, so it is simply unmarked.
+    Hex placement;
 };
 
 struct Session {

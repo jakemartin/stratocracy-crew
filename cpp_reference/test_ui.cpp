@@ -433,6 +433,258 @@ int main(int argc, char** argv) {
     }
 
     // -----------------------------------------------------------------------
+    // T-UI-05 — snapshot fidelity (§4.7 Stub 8, minted 2026-08-04)
+    //
+    // The check under test recomputes every expected value from the owning module and
+    // never calls buildUiSnapshot, so it CAN disagree with the projection. (d) below
+    // measures that it does: a check that agreed with everything would make (a), (b)
+    // and (c) assert nothing, which is the same trap T-UI-02 (c) exists to close.
+    // -----------------------------------------------------------------------
+    std::printf("\n-- T-UI-05  snapshot fidelity ----------------------------------------\n");
+    {
+        // A fixture with something in every group: two sides, a Factory and a Town as
+        // objectives, a guided-opening seat, and a unit that will move.
+        std::vector<UiUnit> us;
+        {
+            UiUnit a; a.id = 1; a.side = 0; a.defIndex = 0;      // Infantry, the marked seat
+            a.hex = offsetToAxial(1, 2); a.placement = a.hex;
+            a.unit = unitFromDef(units[0]);
+            us.push_back(a);
+            UiUnit b; b.id = 2; b.side = 1; b.defIndex = 1;      // Tank
+            b.hex = offsetToAxial(5, 2); b.placement = b.hex;
+            b.unit = unitFromDef(units[1]);
+            us.push_back(b);
+        }
+        UiWorld w;
+        w.units = us;
+        w.board = buildBoard(w.units);
+        w.unitDefs = &units;
+        w.terrain  = &terrain;
+
+        EconomyState econ;
+        econ.captureTurns = 2;
+        econ.objectives.push_back(Objective{offsetToAxial(6, 0), 0, 6});   // Factory, side 0
+        econ.objectives.push_back(Objective{offsetToAxial(4, 2), 1, 4});   // Town, side 1
+        initSide(econ, 0, 200);
+        initSide(econ, 1, 200);
+        w.economy = &econ;
+
+        // The guided-opening seat names side 0's Infantry BY ITS DEPLOYMENT HEX.
+        std::vector<ScenarioGuided> guided;
+        {
+            ScenarioGuided g; g.side = 0; g.infantry = offsetToAxial(1, 2);
+            g.objective = offsetToAxial(6, 0);
+            guided.push_back(g);
+        }
+        w.guided = &guided;
+
+        TurnState t;
+        std::string terr;
+        initMatch(t, 0, 20, terr);
+        w.turn = &t;
+        BoardSnapshot bs; bs.factoryTotal = 1;
+        beginTurn(t, bs);
+        applyStartOfTurnRepair(t, std::vector<RepairSubject>());
+
+        // (a) the projection is faithful, and the check saw every field.
+        {
+            const UiSnapshot s = buildUiSnapshot(w);
+            const UiFidelityResult f = uiCheckSnapshotFidelity(w, s);
+            check("T-UI-05 (a) the projection is faithful under all three clauses", f.ok);
+            if (!f.ok)
+                for (const UiFidelityFailure& x : f.failures)
+                    std::printf("      (clause %s  %s: %s)\n",
+                                x.clause.c_str(), x.field.c_str(), x.detail.c_str());
+            check("T-UI-05 (a2) the check examined both kinds, not just one",
+                  f.mirrorsChecked > 0 && f.derivedChecked > 0);
+            whyInt("mirrors checked", f.mirrorsChecked);
+            whyInt("declared-derived checked", f.derivedChecked);
+            whyInt("fields enumerated", f.fieldsEnumerated);
+        }
+
+        // (b) the contract IS the stub's field list: 27 fields, 22 mirror, 5 derived.
+        {
+            const std::vector<UiFieldContractEntry>& c = uiFieldContract();
+            int mirrors = 0, deriveds = 0;
+            for (const UiFieldContractEntry& e : c)
+                (e.kind == UiFieldKind::Mirror ? mirrors : deriveds) += 1;
+            check("T-UI-05 (b) the contract transcribes Stub 8's field list exactly",
+                  static_cast<int>(c.size()) == kUiSnapshotFieldCount &&
+                  mirrors == kUiMirrorFieldCount && deriveds == kUiDerivedFieldCount);
+            bool everyRowStatesASource = true;
+            for (const UiFieldContractEntry& e : c)
+                if (e.source == nullptr || *e.source == '\0') everyRowStatesASource = false;
+            check("T-UI-05 (b2) every contract row names a module-side value or states "
+                  "a derivation", everyRowStatesASource);
+        }
+
+        // (c) THE DISCRIMINATION TEST. Each clause must reject the defect it exists
+        // for. Without this the suite would pass against a check that returned ok
+        // unconditionally, and would be measuring nothing at all.
+        {
+            const UiSnapshot good = buildUiSnapshot(w);
+
+            UiSnapshot badMirror = good;                 // clause (a): a mirror that lies
+            badMirror.units[0].hp += 1;
+            const UiFidelityResult fa = uiCheckSnapshotFidelity(w, badMirror);
+            bool caughtA = false;
+            for (const UiFidelityFailure& x : fa.failures) if (x.clause == "a") caughtA = true;
+            check("T-UI-05 (c) clause (a) rejects a mirror that does not equal the module",
+                  !fa.ok && caughtA);
+
+            UiSnapshot badDerived = good;                // clause (b): a wrong derivation
+            badDerived.side[0].incomePerTurn += 25;
+            const UiFidelityResult fb = uiCheckSnapshotFidelity(w, badDerived);
+            bool caughtB = false;
+            for (const UiFidelityFailure& x : fb.failures) if (x.clause == "b") caughtB = true;
+            check("T-UI-05 (c) clause (b) rejects a derivation the stub does not state",
+                  !fb.ok && caughtB);
+
+            // A derived field READ BACK from the snapshot rather than recomputed would
+            // pass any comparison. This is the case that proves it is not: the guided
+            // mark is flipped on a unit the scenario does not name.
+            UiSnapshot badMark = good;
+            for (UiUnitView& v : badMark.units) v.isGuidedMarked = !v.isGuidedMarked;
+            const UiFidelityResult fm = uiCheckSnapshotFidelity(w, badMark);
+            check("T-UI-05 (c) clause (b) rejects a guided mark the scenario does not name",
+                  !fm.ok);
+
+            UiSnapshot badShape = good;                  // clause (c): a group that lost a row
+            if (!badShape.factories.empty()) badShape.factories.pop_back();
+            const UiFidelityResult fc = uiCheckSnapshotFidelity(w, badShape);
+            check("T-UI-05 (c) clause (c) rejects a snapshot whose shape left the contract",
+                  !fc.ok);
+        }
+
+        // (d) RULING G — the standing rate, not turn 1's accrual. Side 0 holds one
+        // Factory, so the rate is 100 while Q8(a) pays 0 on turn 1. A fixture where
+        // the two agreed would not discriminate, and this asserts that they differ.
+        {
+            const UiSnapshot s = buildUiSnapshot(w);
+            EconomyState probe = econ;
+            const int paidOnTurn1 = accrueIncome(probe, terrain, 0, /*turnNumber=*/1);
+            check("T-UI-05 (d) incomePerTurn is the STANDING rate on turn 1, not the "
+                  "accrual", s.side[0].incomePerTurn == 100 && paidOnTurn1 == 0);
+            whyInt("standing rate", s.side[0].incomePerTurn);
+            whyInt("accrued on turn 1", paidOnTurn1);
+            check("T-UI-05 (d2) the Town rate is read from the table too, not hardcoded "
+                  "to factories", s.side[1].incomePerTurn == 25);
+        }
+
+        // (e) RULING F/J — the mark is a property of the PLACEMENT. It must survive the
+        // marked unit moving, which is the one thing beat 1a asks it to do.
+        {
+            const UiUnitView* before = findUiUnitView(buildUiSnapshot(w), 1);
+            check("T-UI-05 (e) the scenario's guided seat is marked, and only it",
+                  before != nullptr && before->isGuidedMarked &&
+                  findUiUnitView(buildUiSnapshot(w), 2) != nullptr &&
+                  !findUiUnitView(buildUiSnapshot(w), 2)->isGuidedMarked);
+
+            UiWorld moved = w;
+            moved.units[0].hex = offsetToAxial(2, 2);      // placement deliberately unchanged
+            moved.board = buildBoard(moved.units);
+            const UiSnapshot s2 = buildUiSnapshot(moved);
+            const UiUnitView* after = findUiUnitView(s2, 1);
+            check("T-UI-05 (e2) the mark does not move when the unit does",
+                  after != nullptr && after->isGuidedMarked &&
+                  !hexEqual(after->hex, moved.units[0].placement));
+            check("T-UI-05 (e3) and the moved world is still faithful",
+                  uiCheckSnapshotFidelity(moved, s2).ok);
+        }
+
+        // (f) RULING E — spawnBlocked and buildWaiting are DISTINCT, and the case that
+        // separates them is a boxed-in factory with NOTHING QUEUED. buildWaiting alone
+        // cannot express it, which is why the field was ruled.
+        {
+            UiWorld boxed = w;
+            // The Factory at (6,0) is a corner: three in-bounds neighbours. Fill the
+            // factory hex and all three, and no build could place.
+            const int cols[4] = {6, 5, 5, 6};
+            const int rows[4] = {0, 0, 1, 1};
+            boxed.units.clear();
+            for (int i = 0; i < 4; ++i) {
+                UiUnit u; u.id = 10 + i; u.side = 0; u.defIndex = 0;
+                u.hex = offsetToAxial(cols[i], rows[i]); u.placement = u.hex;
+                u.unit = unitFromDef(units[0]);
+                boxed.units.push_back(u);
+            }
+            boxed.board = buildBoard(boxed.units);
+            const UiSnapshot s = buildUiSnapshot(boxed);
+            check("T-UI-05 (f) a boxed-in factory reports spawnBlocked with NOTHING "
+                  "queued, which buildWaiting alone cannot express",
+                  s.factories.size() == 1 && s.factories[0].spawnBlocked &&
+                  !s.factories[0].buildWaiting);
+            check("T-UI-05 (f2) and the derivation still agrees with the check",
+                  uiCheckSnapshotFidelity(boxed, s).ok);
+
+            // The fixture must be able to report NOT blocked, or (f) asserts only that
+            // the field exists.
+            UiWorld freed = boxed;
+            freed.units.pop_back();
+            freed.board = buildBoard(freed.units);
+            const UiSnapshot s2 = buildUiSnapshot(freed);
+            check("T-UI-05 (f3) the fixture discriminates: freeing one neighbour clears "
+                  "spawnBlocked",
+                  s2.factories.size() == 1 && !s2.factories[0].spawnBlocked);
+        }
+
+        // (g) THE STUB'S OWN ASSERTION METHOD: rebuild the snapshot after each command
+        // of a fixed command sequence and compare every field under (a), (b) and (c).
+        {
+            int steps = 0, faithful = 0;
+            auto step = [&](const char* what) {
+                ++steps;
+                const UiSnapshot s = buildUiSnapshot(w);
+                const UiFidelityResult f = uiCheckSnapshotFidelity(w, s);
+                if (f.ok) ++faithful;
+                else {
+                    std::printf("      (after %s:)\n", what);
+                    for (const UiFidelityFailure& x : f.failures)
+                        std::printf("        clause %s  %s: %s\n",
+                                    x.clause.c_str(), x.field.c_str(), x.detail.c_str());
+                }
+            };
+
+            std::string e;
+            markMoved(t, 1, 0, e);                                   step("Move");
+            markActed(t, 1, 0, e);                                   step("Attack");
+            queueBuild(econ, units, terrain, 0, offsetToAxial(6, 0), 0, e);
+                                                                     step("Build (queued)");
+            markBuilt(t, offsetToAxial(6, 0), 0, e);                 step("Build (allowance)");
+            // The queued build now holds the factory's slot; the snapshot must say so.
+            const UiSnapshot mid = buildUiSnapshot(w);
+            check("T-UI-05 (g) buildWaiting and hasBuiltThisTurn are read from two "
+                  "places and both are true after a queued build",
+                  mid.factories.size() == 1 && mid.factories[0].buildWaiting &&
+                  mid.factories[0].hasBuiltThisTurn);
+            endTurn(t, bs);                                          step("EndTurn");
+            beginTurn(t, bs);                                        step("the next turn beginning");
+
+            check("T-UI-05 (g2) the snapshot is faithful after EVERY command of the "
+                  "sequence", steps > 0 && faithful == steps);
+            whyInt("commands replayed", steps);
+        }
+
+        // (h) The presentation block is NOT in this invariant's subject. It has no
+        // module-side counterpart, so nothing here compares it -- and its two members
+        // have DIFFERENT lifecycles, which is why they are two members and not one.
+        {
+            UiPresentation p;
+            UiPresentationUnit a; a.id = 1; a.done = false; a.lockedThisTurn = true;
+            p.units.push_back(a);
+            UiViewModel vm;
+            vm.snapshot = buildUiSnapshot(w);
+            vm.presentation = p;
+            check("T-UI-05 (h) a unit can be locked and not done at once, so the block's "
+                  "two members are not one field",
+                  vm.presentation.units[0].lockedThisTurn && !vm.presentation.units[0].done);
+            check("T-UI-05 (h2) the block is outside the invariant's subject: fidelity "
+                  "does not read it",
+                  uiCheckSnapshotFidelity(w, vm.snapshot).ok);
+        }
+    }
+
+    // -----------------------------------------------------------------------
     std::printf("\n");
     std::printf("NOT RUN  T-UI-03 -- the live standings scoreboard binds 1:1 to snapshot\n");
     std::printf("         fields with no widget-side arithmetic. In-editor Unreal\n");
@@ -447,13 +699,13 @@ int main(int argc, char** argv) {
     std::printf("         snapshot field or a query is stated nowhere, and inventing one\n");
     std::printf("         here would pre-empt a Director ruling.\n");
     std::printf("\n");
-    std::printf("NOTE     The four snapshot-shape checks above are NOT gated by any\n");
-    std::printf("         numbered ID, and are not counted as one. No written invariant\n");
-    std::printf("         asserts that the snapshot mirrors the rules modules at all --\n");
-    std::printf("         T-UI-01..04 each assert a binding DOWNSTREAM of it. That gap is\n");
-    std::printf("         filed as a change request against §4.7 Stub 8's Acceptance line\n");
-    std::printf("         and is a Director ruling, since numbering it would move §4.5's\n");
-    std::printf("         written-ID count from 70 to 71.\n");
+    std::printf("NOTE     The gap this suite filed at 7c36303 -- that no written invariant\n");
+    std::printf("         asserted the snapshot mirrors the rules modules at all, while\n");
+    std::printf("         T-UI-01..04 each assert a binding DOWNSTREAM of it -- was RULED\n");
+    std::printf("         on 2026-08-04. It is T-UI-05, numbered, headless and unmarked,\n");
+    std::printf("         and §4.5's written-ID count moved 70 -> 71. It runs above; the\n");
+    std::printf("         four snapshot-shape checks are now upstream of a gated ID\n");
+    std::printf("         rather than standing in for one.\n");
     std::printf("NOTE     GATE-CAP-PARTIAL ran on a fixture with captureTurns = 2. The\n");
     std::printf("         shipped scenario ships N = 1 (§2.7), so Ferrum Crossing cannot\n");
     std::printf("         reach the state this gate asserts about. N is per-scenario data\n");

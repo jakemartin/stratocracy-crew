@@ -57,19 +57,49 @@ things about it are load-bearing:
    `Turn.h::hasMoved` / `Turn.h::hasActed` and never from each other.
 2. **Neither flag is §2.11.1's DONE bit.** DONE is the selection machine's own
    per-unit bit and every §2.11 surface reading *has not acted* binds to it, not
-   to these. **The DONE bit is not a snapshot field and you must not add one** —
-   where per-unit presentation state lives is an open question filed with the
-   GDD half and unruled. A widget-side concept in this contract would decide it.
+   to these. **The DONE bit is not a snapshot field** — it is derivable from
+   neither flag nor from any pair of them, since Wait and RMB-in-MOVED both reach
+   it without spending the act flag. It lives in the **presentation block**
+   (below), which is the other half of the view model.
 
-**Do not add a field the stub does not name.** Three are known to be missing and
-each is filed as an unwritten change request against the GDD, not a gap for this
-build to close:
+**The three change requests this spec filed on 2026-08-04 were RULED the same
+day, and all three are now in the stub.** They are no longer gaps to leave open:
 
-- the **per-factory "has built this turn" record** §2.11.5's `BUILD` pulse would
-  need (`TurnState::builtThisTurn` holds it, and whether it reaches the snapshot
-  as a field or a query is unruled);
-- §2.11.2's **income rate** (`+175/turn`);
-- the **DONE bit**, above.
+- the **per-factory group** `{hex, owner, hasBuiltThisTurn, buildWaiting,
+  spawnBlocked}` — ruled C and E. `hasBuiltThisTurn` and `buildWaiting` mirror
+  state the module already holds (`Turn.h::hasBuiltThisTurn`,
+  `EconomyState::pending`); `spawnBlocked` is DECLARED DERIVED and is **not** the
+  same fact as `buildWaiting`. The case that separates them, and the reason the
+  field was ruled, is a **boxed-in factory with nothing queued**: blocked, not
+  waiting. §2.11.5's footer needs exactly that state;
+- §2.11.2's **income rate**, as per-side `incomePerTurn` — ruled G. DECLARED
+  DERIVED, and it is the **STANDING** rate: on turn 1 it reads what the holdings
+  will pay at the start of turn 2, **not** the 0 that Q8(a) pays. Do not
+  implement it by calling `accrueIncome`; that function answers a different
+  question and returns 0 on turn 1;
+- the **DONE bit**, which went to the presentation block rather than the
+  snapshot — ruled A.
+
+**Still: do not add a field the stub does not name.** `T-UI-05` clause (c) now
+enforces that mechanically rather than by instruction — a field with no contract
+row fails the invariant.
+
+**The presentation block** is the view model's second half: **two** per-unit
+members, each with a named owner that is not a widget and not this module.
+`done` is owned by §2.11.1's selection machine. `lockedThisTurn` is owned by the
+guidance layer. **Their lifecycles differ and one must not be copied from the
+other**: `done` clears when the owner's next turn begins, while `lockedThisTurn`
+clears when beat 1a retires — which §2.11.6-B puts at the marked Infantry's move
+completing, *inside* turn 1. This module declares the block and **does not fill
+it**: `buildUiSnapshot` produces the snapshot only.
+
+`isGuidedMarked` is a **per-unit snapshot field** and is DECLARED DERIVED
+(ruled J — it is a predicate over a placement, not a copy of one, so it is not a
+mirror). It is true exactly on the placement the scenario's
+`guidedOpening.infantry` names for that unit's seat. **Read it from the unit's
+placement, never from its current hex**: it is a property of the placement and
+does not move when the unit does, and beat 1a's whole content is that the marked
+unit moves.
 
 `captureProgress` is a **per-unit** field in the stub while `Economy.h` holds
 progress on the **tile**, naming the unit that accumulated it. That is not a
@@ -101,9 +131,9 @@ be gated in-editor as though the document had asked for it.
 
 ## Invariants (the merge gate)
 
-`T-UI-01`, `T-UI-02` and `GATE-CAP-PARTIAL` are stated in full in §4.7 Stub 8.
-**Read them there rather than from a paraphrase here.** What follows is only
-what this build must not get wrong.
+`T-UI-01`, `T-UI-02`, `T-UI-05` and `GATE-CAP-PARTIAL` are stated in full in
+§4.7 Stub 8. **Read them there rather than from a paraphrase here.** What
+follows is only what this build must not get wrong.
 
 **T-UI-01 — "the same call" is structural, not an assertion.** The forecast must
 be produced by `Combat.h::resolveDamage` and `Combat.h::defenderCanCounter`,
@@ -121,6 +151,31 @@ within the unit's Move. It agrees on open ground and diverges the moment terrain
 costs more than 1, is impassable, or an occupant blocks a route — and Q3's
 conservative reading, in force, makes any other unit a full block. Gate the
 divergence, not the agreement.
+
+**T-UI-05 — the check must be able to DISAGREE with the projection, and the
+first version was not.** Clause (b) says each DECLARED DERIVED field is
+*"recomputed inside the check rather than read back out of the snapshot — so a
+wrong derivation fails here and is not merely reproduced"*. Rebuilding the
+snapshot and comparing it to itself is the obvious wrong reading, and there is a
+second, subtler one: **calling the same derivation helper the projection called.**
+
+That is not hypothetical here. On the first pass the check shared the
+projection's helpers, and the pass-1 variant's wrong `incomePerTurn` and wrong
+`isGuidedMarked` **both passed the invariant** — projection and check were wrong
+together, so clause (b) compared a value to itself. The three derivations are
+therefore **written out a second time inside the check**, from the stub's words.
+The duplication is the mechanism, not an oversight; do not "clean it up".
+
+Clause (c) needs two directions, because each catches a different defect: a
+field in the snapshot with no contract row (one that entered without a contract)
+and a contract row nothing emits (one the document claims and the snapshot does
+not carry). Neither is visible to (a) or (b), which only compare fields both
+sides already agree exist.
+
+Assert it the way the stub says — **rebuild the snapshot after each command of a
+fixed command sequence** — and pin the two rulings that a self-consistency check
+cannot see on its own: `incomePerTurn` **= the standing rate while turn 1 pays
+0**, and the guided mark **surviving its unit's move**.
 
 **GATE-CAP-PARTIAL — it is a differential read of two fields, and both halves
 must move.** Raising a unit's `captureProgress` short of completion leaves
@@ -164,12 +219,18 @@ row, and flips nothing.
 
 ## Acceptance
 
-`T-UI-01`, `T-UI-02` and `GATE-CAP-PARTIAL` in full. **`T-UI-03` and `T-UI-04`
-do not run** — in-editor Automation, no editor pass at this commit — and are
-reported by name with that reason. They are **written, unblocked and asserting**;
-what they lack is a harness, not a rule. That is a different state from
-`T-SCN-10`, which is reserved and unwritten, and from `T-MOVE-07`, which is
+`T-UI-01`, `T-UI-02`, `T-UI-05` and `GATE-CAP-PARTIAL` in full. **`T-UI-03` and
+`T-UI-04` do not run** — in-editor Automation, no editor pass at this commit —
+and are reported by name with that reason. They are **written, unblocked and
+asserting**; what they lack is a harness, not a rule. That is a different state
+from `T-SCN-10`, which is reserved and unwritten, and from `T-MOVE-07`, which is
 blocked.
+
+**The row still does not flip** (Q29, applied per acceptance ID as well as per
+row): `T-UI-03` and `T-UI-04` remain unclosed, so this row records a partial
+pass and stays `*pending*` — row 2's posture on `T-DATA-05` and row 7's on
+`T-SCN-08/09/11`. What changed is that the editor pass is now the *whole* of
+what the row lacks; before `T-UI-05` was implemented it was not.
 
 Two passes, as every row before this one: a pass-1 implementation carrying a
 plausible misreading of *this document alone*, blocked by named IDs you predict

@@ -257,14 +257,18 @@ produced rather than one a test author constructed.
 
 ### Row 8 — UI binding contract (a partial pass, like row 7)
 
-`spec/ui_spec.md`, **14/14** under both compilers — but 14/14 of a **subset**. §4.7
-Stub 8's acceptance set splits across two harnesses: `T-UI-01`, `T-UI-02` and
-`GATE-CAP-PARTIAL` are headless and run here; **`T-UI-03` and `T-UI-04` are in-editor
-Unreal Automation** over widget bindings, marked `†` in §4.11, and no in-editor pass
-exists at this commit. **Row 8's ledger row therefore does not flip** — Q29, read per
-acceptance ID as well as per row. The runner prints both unrun IDs by name before its
-tally. They are **written, unblocked and asserting**: what they lack is a harness, not
-a rule.
+`spec/ui_spec.md`, **34/34** under both compilers — but 34/34 of a **subset**. §4.7
+Stub 8's acceptance set splits across two harnesses: `T-UI-01`, `T-UI-02`, `T-UI-05`
+and `GATE-CAP-PARTIAL` are headless and run here; **`T-UI-03` and `T-UI-04` are
+in-editor Unreal Automation** over widget bindings, marked `†` in §4.11, and no
+in-editor pass exists at this commit. **Row 8's ledger row therefore does not flip** —
+Q29, read per acceptance ID as well as per row. The runner prints both unrun IDs by
+name before its tally. They are **written, unblocked and asserting**: what they lack is
+a harness, not a rule.
+
+`T-UI-05` was minted on 2026-08-04 and held no code until this commit; it is the reason
+the editor pass was **not** the whole of what this row lacked. It is now green, and the
+editor pass is.
 
 This row is the **contract for how every widget is fed**, not widgets and not layout.
 The module owns no rules and no board: the snapshot projects state its owning modules
@@ -281,6 +285,7 @@ separately, read from `Turn.h`'s two sets and never from each other.
 |---|---|
 | **T-UI-01** | the forecast is produced by `resolveDamage` / `defenderCanCounter` (`5ffa8d6`) **and nothing else** — swept over 15,872 placements, 3,160 of them legal, 1,276 with a counter firing, against expectations computed by calling `Combat.h` directly |
 | **T-UI-02** | the highlight is `Move.h`'s set hex for hex and cost for cost, never recomputed — and the fixture is **measured to discriminate**: a plain distance filter reaches 21 hexes on it where `Move.h` reaches 13 |
+| **T-UI-05** | snapshot fidelity, field by field, in three clauses: mirrors equal the module-side value they name, DECLARED DERIVED fields equal the derivation the stub states **recomputed inside the check**, and a field of neither kind fails. 27 contract rows, 22 mirror and 5 derived |
 | **GATE-CAP-PARTIAL** | §2.8's `T-CAP-05` — a capture short of completion leaves **both** sides' `objectivesHeld` unchanged, asserted as a **differential**: the progress field must rise in the same step, or an implementation that changes nothing would pass |
 
 `GATE-CAP-PARTIAL` runs on a fixture with `captureTurns = 2`. **The shipped scenario
@@ -288,18 +293,37 @@ ships N = 1** (§2.7), so *Ferrum Crossing* cannot reach the state this gate ass
 about at all; N is per-scenario data and the fixture configures it. That is stated in
 the run rather than left to be inferred.
 
-The pass-1 hallucination is two readings the document names in advance: the highlight
-recomputed as *every hex within Move by hex distance*, and `objectivesHeld` given
-**partial credit** for a capture in progress — the reading Q14 refuses. It is blocked
-at **10/14**, four FAIL lines over **two** distinct IDs (`T-UI-02` on all three of its
-checks, `GATE-CAP-PARTIAL` on the differential), with `T-UI-01` green in both passes.
+The pass-1 hallucination is five readings the document names in advance: the highlight
+recomputed as *every hex within Move by hex distance*; `objectivesHeld` given **partial
+credit** for a capture in progress — the reading Q14 refuses; `incomePerTurn` taken from
+`accrueIncome`, which pays 0 on turn 1; `isGuidedMarked` keyed on the unit's **current
+hex** rather than its placement; and `spawnBlocked` set equal to `buildWaiting`. It is
+blocked at **21/34**, 13 FAIL lines over **three** distinct IDs (`T-UI-02` on all three
+of its checks, `GATE-CAP-PARTIAL` on the differential, `T-UI-05` on the rest), with
+`T-UI-01` green in both passes.
+
+**Two of those five defeated `T-UI-05` on the first attempt, and that is why the check
+is written the way it is.** The wrong `incomePerTurn` and the wrong `isGuidedMarked`
+were planted in the helpers the projection and the check **shared** — so the invariant
+compared each value to itself and returned clean. Clause (b) requires the derivation to
+be *recomputed inside the check*; sharing a helper reproduces it instead. The three
+derivations are now written out a second time inside the check, and the duplication is
+deliberate. `GATE-DRV-12` was extended for the same reason: **it passed 12/12 against
+the pass-1 module before the extension** and catches it at 11/12 after.
 
 **No buildlist query is offered.** `T-UI-04` names one derived from the four Stub-2
 unit rows plus current `fameTotal`, but whether it reaches the UI as a snapshot field
 or a query is stated nowhere and `T-UI-04` does not run in this harness — inventing the
-shape would pre-empt a Director ruling. Three known-absent fields are filed the same
-way: the per-factory *has built this turn* record §2.11.5's `BUILD` pulse would need,
-§2.11.2's income rate, and §2.11.1's **DONE bit**, which is neither of the two flags.
+shape would pre-empt a Director ruling.
+
+**The three fields this row filed as change requests at `7c36303` were ruled on
+2026-08-04 and are now built**: the per-factory group `{hex, owner, hasBuiltThisTurn,
+buildWaiting, spawnBlocked}`, per-side `incomePerTurn`, and §2.11.1's **DONE bit** —
+which went to the **presentation block** rather than the snapshot, since it is
+derivable from neither turn flag. The block is the view model's second half: two
+per-unit members under two non-widget owners, `done` (the selection machine) and
+`lockedThisTurn` (the guidance layer), whose lifecycles differ. This module declares
+the block and does not fill it.
 
 ### The other half of week 1 — "Playable via debug commands"
 

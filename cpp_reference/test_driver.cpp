@@ -601,6 +601,61 @@ int main(int argc, char** argv) {
             if (!contains(after, "hasActed 0")) ok12 = false;
         }
 
+        // The per-factory group and the per-side rate are the 2026-08-04 additions.
+        // They are asserted the same way as everything else here -- against the
+        // module, not against a literal.
+        {
+            const UiSnapshot v = buildUiSnapshot(uiWorldOf(d));
+            std::size_t wantFactories = 0;
+            for (const Objective& o : d.economy.objectives)
+                if (o.terrainIndex >= 0 &&
+                    static_cast<std::size_t>(o.terrainIndex) < d.terrainDefs.size() &&
+                    d.terrainDefs[o.terrainIndex].isSpawnPoint) ++wantFactories;
+            if (v.factories.size() != wantFactories) ok12 = false;
+            for (const UiFactoryView& f : v.factories) {
+                if (f.spawnBlocked != spawnHexesBlocked(uiWorldOf(d), f.hex)) ok12 = false;
+                if (f.hasBuiltThisTurn != hasBuiltThisTurn(d.match, f.hex)) ok12 = false;
+            }
+            for (int i = 0; i < SIDE_COUNT; ++i)
+                if (v.side[i].incomePerTurn !=
+                    standingIncomeRate(d.economy, d.terrainDefs, i)) ok12 = false;
+            const std::vector<std::string> printed2 = run(d, "snapshot");
+            if (!contains(printed2, "incomePerTurn")) ok12 = false;
+            // A render that dropped the group would still pass every field check
+            // above, so the printed line is asserted too -- but only where the board
+            // actually has a factory to print.
+            if (wantFactories > 0 && !contains(printed2, "spawnBlocked")) ok12 = false;
+        }
+
+        // The guided seat is a SCENARIO fact, so it is asserted on a loaded file
+        // rather than on a hand-placed fixture, which names no seats at all.
+        {
+            Session g;
+            std::string ge;
+            sessionInit(g, dir, ge);
+            if (!contains(run(g, "scenario load " + dir + "/ferrum_crossing.json"), "refused")) {
+                const UiSnapshot v = buildUiSnapshot(uiWorldOf(g));
+                int marked = 0;
+                for (const UiUnitView& u : v.units) if (u.isGuidedMarked) ++marked;
+                // Stub 7 requires exactly one guidedOpening entry per side, and each
+                // names one placement, so exactly one unit per side carries the mark.
+                if (marked != static_cast<int>(g.scenario.guided.size())) ok12 = false;
+                if (marked == 0) ok12 = false;
+                // And it is the PLACEMENT that is marked: moving the unit must not
+                // move the mark.
+                for (DriverUnit& u : g.units)
+                    if (findUiUnitView(v, u.id) != nullptr &&
+                        findUiUnitView(v, u.id)->isGuidedMarked) {
+                        u.hex = offsetToAxial(0, 0);
+                        break;
+                    }
+                const UiSnapshot after = buildUiSnapshot(uiWorldOf(g));
+                int markedAfter = 0;
+                for (const UiUnitView& u : after.units) if (u.isGuidedMarked) ++markedAfter;
+                if (markedAfter != marked) ok12 = false;
+            }
+        }
+
         // A view model of no board is not a thing to invent.
         Session n;
         sessionInit(n, dir, e);
