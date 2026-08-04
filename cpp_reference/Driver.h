@@ -15,6 +15,7 @@
 #include "Move.h"
 #include "Scenario.h"
 #include "Turn.h"
+#include "Ui.h"
 
 namespace strat {
 
@@ -121,6 +122,13 @@ std::string renderAiCommand(const Session& s, const AiCommand& c);
 // the units on the board, flag status from the debug designation above. Nothing here
 // is decided; it is gathered.
 BoardSnapshot snapshotOf(const Session& s);
+
+// Everything §4.7 Stub 8's contract reads, COMPOSED from the modules that own it --
+// the same gathering `snapshotOf` does for §2.8's facts. The returned UiWorld borrows
+// the session's tables and module states, so it must not outlive `s`. The driver
+// decides nothing here either: `buildUiSnapshot` projects it and adds nothing, which
+// is what GATE-DRV-12 asserts.
+UiWorld uiWorldOf(const Session& s);
 
 const DriverUnit* findUnitById(const Session& s, int id);
 

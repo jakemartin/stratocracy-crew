@@ -34,14 +34,17 @@ expected values.
 
 ## What it deliberately does NOT do
 
-§4.11 row 8 holds no code, so the driver exposes none of it and says so:
+- **No UI.** Text in, text out. Row 8 landed, but what it ships is the **binding
+  contract** — how a widget is fed — and not widgets, layout or visual design,
+  which are §2.11's lane. `snapshot` prints §4.7 Stub 8's view model; nothing
+  draws it.
 
-- **No UI** (row 8). Text in, text out, and `scenario snapshot` refuses rather
-  than inventing a view-model Stub 8 has not specified.
-
-The **scenario file** is no longer on that list. Row 7 landed, so `scenario load
-<path>` hands the path to `Scenario.h` and installs whatever it returns — the
-driver still defines no file format and parses nothing itself.
+The **scenario file** and the **view model** are both off the refusal list now.
+Row 7 landed, so `scenario load <path>` hands the path to `Scenario.h` and
+installs whatever it returns; row 8 landed, so `snapshot` composes the world and
+lets `Ui.h` project it. The driver still defines no file format, parses nothing
+itself, and computes no view-model value — `GATE-DRV-12` asserts the printed
+snapshot is the module's field for field.
 
 **One thing it holds that no module owns, and labels as such.** On a built-in
 fixture `flag <side> <id>` is a **debug designation** — the human names the flag

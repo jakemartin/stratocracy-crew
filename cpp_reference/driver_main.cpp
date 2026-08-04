@@ -16,8 +16,9 @@ int main(int argc, char** argv) {
         return 1;                       // §4.8: a bad table is a hard failure
     }
 
-    std::cout << "Stratocracy debug driver — rows 1-7 + Combat/Repair, headless.\n"
-              << "No UI: row 8 holds no code. With no match running the board is a\n"
+    std::cout << "Stratocracy debug driver — rows 1-8 + Combat/Repair, headless.\n"
+              << "Still no UI: row 8 ships the BINDING CONTRACT, not widgets — 'snapshot'\n"
+              << "prints §4.7 Stub 8's view model. With no match running the board is a\n"
               << "free sandbox; 'match' starts a real turn loop and 'ai' plays the\n"
               << "active side's turn. 'scenario load <path>' installs a validated\n"
               << "scenario file as the board.\n"

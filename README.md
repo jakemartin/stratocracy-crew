@@ -255,6 +255,52 @@ shipped map's own **pre-fix** deployment at (9,5), passes at 5 against 6 under t
 refused reading instead of failing at 5 against 5. That fixture is the one the project
 produced rather than one a test author constructed.
 
+### Row 8 — UI binding contract (a partial pass, like row 7)
+
+`spec/ui_spec.md`, **14/14** under both compilers — but 14/14 of a **subset**. §4.7
+Stub 8's acceptance set splits across two harnesses: `T-UI-01`, `T-UI-02` and
+`GATE-CAP-PARTIAL` are headless and run here; **`T-UI-03` and `T-UI-04` are in-editor
+Unreal Automation** over widget bindings, marked `†` in §4.11, and no in-editor pass
+exists at this commit. **Row 8's ledger row therefore does not flip** — Q29, read per
+acceptance ID as well as per row. The runner prints both unrun IDs by name before its
+tally. They are **written, unblocked and asserting**: what they lack is a harness, not
+a rule.
+
+This row is the **contract for how every widget is fed**, not widgets and not layout.
+The module owns no rules and no board: the snapshot projects state its owning modules
+already hold, and both queries delegate. A number it computed for itself would be a
+defect even when it is the right number.
+
+It is also where the GDD half of this round landed. §4.7 Stub 8's snapshot named
+`hasActed` as **one** per-unit field until 2026-08-04, while `T-TURN-01` has asserted
+**two independent flags** since row 5's rebuild — one field cannot express a unit that
+has spent exactly one of them. The contract now carries `hasMoved` and `hasActed`
+separately, read from `Turn.h`'s two sets and never from each other.
+
+| ID | What it pins |
+|---|---|
+| **T-UI-01** | the forecast is produced by `resolveDamage` / `defenderCanCounter` (`5ffa8d6`) **and nothing else** — swept over 15,872 placements, 3,160 of them legal, 1,276 with a counter firing, against expectations computed by calling `Combat.h` directly |
+| **T-UI-02** | the highlight is `Move.h`'s set hex for hex and cost for cost, never recomputed — and the fixture is **measured to discriminate**: a plain distance filter reaches 21 hexes on it where `Move.h` reaches 13 |
+| **GATE-CAP-PARTIAL** | §2.8's `T-CAP-05` — a capture short of completion leaves **both** sides' `objectivesHeld` unchanged, asserted as a **differential**: the progress field must rise in the same step, or an implementation that changes nothing would pass |
+
+`GATE-CAP-PARTIAL` runs on a fixture with `captureTurns = 2`. **The shipped scenario
+ships N = 1** (§2.7), so *Ferrum Crossing* cannot reach the state this gate asserts
+about at all; N is per-scenario data and the fixture configures it. That is stated in
+the run rather than left to be inferred.
+
+The pass-1 hallucination is two readings the document names in advance: the highlight
+recomputed as *every hex within Move by hex distance*, and `objectivesHeld` given
+**partial credit** for a capture in progress — the reading Q14 refuses. It is blocked
+at **10/14**, four FAIL lines over **two** distinct IDs (`T-UI-02` on all three of its
+checks, `GATE-CAP-PARTIAL` on the differential), with `T-UI-01` green in both passes.
+
+**No buildlist query is offered.** `T-UI-04` names one derived from the four Stub-2
+unit rows plus current `fameTotal`, but whether it reaches the UI as a snapshot field
+or a query is stated nowhere and `T-UI-04` does not run in this harness — inventing the
+shape would pre-empt a Director ruling. Three known-absent fields are filed the same
+way: the per-factory *has built this turn* record §2.11.5's `BUILD` pulse would need,
+§2.11.2's income rate, and §2.11.1's **DONE bit**, which is neither of the two flags.
+
 ### The other half of week 1 — "Playable via debug commands"
 
 §4.4's week-1 goal has two halves, and the row flips only closed one. The second is a
@@ -276,8 +322,8 @@ adjacency to `Hex.h`; capture, income and build to `Economy.h`; alternation, act
 the start-of-turn moment and the §2.8 result to `Turn.h`; the opponent's decisions to
 `Ai.h`; and, since row 7, the scenario file to `Scenario.h` — `scenario load <path>`
 hands the path to the module and installs whatever it returns, refusing whatever it
-refuses. Where an answer would need §4.11 row 8 — how a widget is fed — it **refuses
-the command instead of deciding it**, and `scenario snapshot` is there to be refused.
+refuses; and, since row 8, how a widget is fed to `Ui.h` — `snapshot` composes the
+world and the module projects it, so every printed value is the module's.
 That is the whole design: a debug tool that decides anything becomes a second rules
 implementation, and then the gated modules are no longer what the game does.
 
@@ -355,8 +401,15 @@ loaded scenario 'ferrum_crossing' (11x9, 10 placements, symmetry none, turnCap 2
 board it installed matches the file placement for placement, and that a file which
 does not validate is refused **whole** — nothing installed, session unchanged.
 
-**What it deliberately is not:** there is no UI, because row 8 holds no code. It is a
-debug tool with a real turn loop, a real opponent and a real scenario file, not the game.
+`GATE-DRV-12` asserts that the `snapshot` command holds no view model of its own: the
+same projection rebuilt through `Ui.h` matches it field for field, and spending exactly
+one of a unit's two per-unit flags shows one spent and one not — the state a driver
+carrying a single "done" bit could not render.
+
+**What it deliberately is not:** there is still no UI. Row 8 ships the **binding
+contract** — how a widget is fed — and not widgets, layout or visual design, which are
+§2.11's lane. It is a debug tool with a real turn loop, a real opponent, a real scenario
+file and a real view model, not the game.
 
 ## Run it
 

@@ -1,11 +1,11 @@
 // Stratocracy — debug-command driver implementation (§4.4 week 1).
 //
 // CONTAINS NO RULES. Every rule decision below is a call into Hex.h, Data.h,
-// Move.h, Combat.h, Economy.h, Turn.h, Ai.h or Scenario.h. What a scenario file
-// looks like is now one of them: `scenario load` hands the path to Scenario.h and
-// installs whatever it returns, refusing whatever it refuses. Where a question is
-// not answerable by one of those eight -- how a widget is fed -- the command is
-// refused rather than decided, because row 8 holds no code (spec/driver_spec.md).
+// Move.h, Combat.h, Economy.h, Turn.h, Ai.h, Scenario.h or Ui.h. What a scenario file
+// looks like is one of them: `scenario load` hands the path to Scenario.h and
+// installs whatever it returns, refusing whatever it refuses. HOW A WIDGET IS FED is
+// now another: row 8 landed, so `snapshot` prints §4.7 Stub 8's view model rather
+// than refusing, and the projection is Ui.h's (spec/driver_spec.md).
 #include "Driver.h"
 
 #include <algorithm>
@@ -83,6 +83,66 @@ static Unit combatUnit(const Session& s, const DriverUnit& u) {
     c.atk = d.atk; c.def = d.def; c.hp = u.hp; c.hpMax = d.hpMax;
     c.rangeMin = d.rangeMin; c.rangeMax = d.rangeMax; c.type = d.type;
     return c;
+}
+
+// Row 8's world, GATHERED and not decided: the board from the session's terrain, the
+// units from its roster, ownership and Fame from Economy.h, the turn and both per-unit
+// flags from Turn.h, the flag designation from the same field `snapshotOf` reads.
+UiWorld uiWorldOf(const Session& s) {
+    UiWorld w;
+    w.board    = buildBoard(s);
+    w.unitDefs = &s.unitDefs;
+    w.terrain  = &s.terrainDefs;
+    w.economy  = &s.economy;
+    w.turn     = &s.match;
+    for (const DriverUnit& u : s.units) {
+        UiUnit v;
+        v.id       = u.id;
+        v.side     = u.side;
+        v.defIndex = u.defIndex;
+        v.hex      = u.hex;
+        v.unit     = combatUnit(s, u);
+        v.isFlag   = (u.side >= 0 && u.side < SIDE_COUNT && s.flagUnit[u.side] == u.id);
+        w.units.push_back(v);
+    }
+    return w;
+}
+
+// Renders §4.7 Stub 8's view model. Every value printed is READ off the projection --
+// the driver computes none of them, which is what GATE-DRV-12 asserts by rebuilding
+// the same snapshot through Ui.h and comparing. Hexes are omitted from the render
+// because `map` already prints the board; the per-hex half of the snapshot is
+// exercised by the gate rather than by the eye.
+static void printUiSnapshot(const Session& s, std::vector<std::string>& out) {
+    const UiWorld    w = uiWorldOf(s);
+    const UiSnapshot v = buildUiSnapshot(w);
+    out.push_back("view model (§4.7 Stub 8) -- " + num(static_cast<int>(v.hexes.size())) +
+                  " hexes, " + num(static_cast<int>(v.units.size())) + " units");
+    out.push_back("match: turn " + num(v.match.turn) + "/" + num(v.match.turnCap) +
+                  " sideToMove " + num(v.match.sideToMove) + " result " +
+                  (v.match.hasResult ? tierName(v.match.resultTier) : std::string("null")));
+    for (int i = 0; i < SIDE_COUNT; ++i) {
+        out.push_back("side " + num(i) + ": fameTotal " + num(v.side[i].fameTotal) +
+                      " fameCombat " + num(v.side[i].fameCombat) +
+                      " objectivesHeld " + num(v.side[i].objectivesHeld) + " of " +
+                      num(v.objectiveTotal) +
+                      " survivingHP " + num(v.side[i].survivingHp));
+    }
+    for (const UiUnitView& u : v.units) {
+        int col = 0, row = 0;
+        axialToOffset(u.hex, col, row);
+        // The two flags print SEPARATELY. One combined "done" column could not show a
+        // unit that has spent exactly one of them, which is the whole content of
+        // T-TURN-01's split -- and neither is §2.11.1's DONE bit, which the snapshot
+        // deliberately does not carry.
+        out.push_back("unit " + num(u.id) + " side " + num(u.side) + " " +
+                      s.unitDefs[u.unitId].id + " (" + num(col) + "," + num(row) + ") hp " +
+                      num(u.hp) + "/" + num(u.hpMax) +
+                      (u.isFlag ? " FLAG" : "") +
+                      " hasMoved " + num(u.hasMoved ? 1 : 0) +
+                      " hasActed " + num(u.hasActed ? 1 : 0) +
+                      " captureProgress " + num(u.captureProgress));
+    }
 }
 
 static int terrainDefPctAt(const Session& s, const Hex& h) {
@@ -608,8 +668,11 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
         out.push_back("row 7: scenario load <path> | scenario report | scenario hash");
         out.push_back("       (with a scenario loaded, 'match <firstSide>' takes the cap");
         out.push_back("        from the file -- the cap is per-scenario data, Q7)");
-        out.push_back("NOTE: no UI -- row 8 holds no code, so 'scenario snapshot' refuses");
-        out.push_back("rather than inventing a view-model. With no match running the board is");
+        out.push_back("row 8: snapshot   (§4.7 Stub 8's view model; 'scenario snapshot' is");
+        out.push_back("       the same command under the spelling row 7 advertised)");
+        out.push_back("NOTE: still no UI -- row 8 ships the BINDING CONTRACT, not widgets and");
+        out.push_back("not layout (§2.11's lane). Text in, text out. With no match running the");
+        out.push_back("board is");
         out.push_back("a free sandbox and 'turn <n>' is a debug setter; 'match' hands the turn");
         out.push_back("number to the turn loop, which then refuses the setter. On a built-in");
         out.push_back("fixture 'flag' is a debug designation; a loaded scenario sets it from");
@@ -676,10 +739,15 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
             return true;
         }
         if (t.size() == 2 && t[1] == "snapshot") {
-            // Where an answer would need row 8, REFUSE rather than decide. The
-            // view-model snapshot is Stub 8's contract and the driver holds none.
-            out.push_back("refused: the view-model snapshot is Stub 8's contract (row 8, "
-                          "unbuilt) -- the driver refuses rather than inventing one");
+            // Row 8 landed, so this projects rather than refuses. It is the same
+            // command as the top-level `snapshot` -- the spelling is kept because the
+            // help has advertised it since row 7. A view model of no board is not a
+            // thing to invent, so with none loaded it refuses like everything else.
+            if (!s.loaded) {
+                out.push_back("refused: no board -- run 'fixture <name>' first");
+                return true;
+            }
+            printUiSnapshot(s, out);
             return true;
         }
         out.push_back("refused: usage: scenario load <path> | scenario report | scenario hash");
@@ -687,6 +755,10 @@ bool execute(Session& s, const std::string& line, std::vector<std::string>& out)
     }
 
     if (!s.loaded) { out.push_back("refused: no board -- run 'fixture <name>' first"); return true; }
+
+    // Row 8. The driver holds no view model of its own: it composes the world and
+    // Ui.h projects it (GATE-DRV-12).
+    if (cmd == "snapshot") { printUiSnapshot(s, out); return true; }
 
     if (cmd == "map")  { renderMap(s, out); return true; }
 

@@ -475,7 +475,9 @@ int main(int argc, char** argv) {
     // `scenario load` adds nothing of its own either: the verdict it prints and the
     // board it installs are Scenario.h's, so the same file loaded directly through
     // the module gives the same integers, the same hash and the same placements.
-    // Where an answer would need row 8 the command REFUSES rather than deciding.
+    // `scenario snapshot` no longer refuses on row 8's account -- row 8 landed, and
+    // GATE-DRV-12 below covers what it now prints. With no board loaded it refuses
+    // the way every other board command does, which is what is asserted here.
     bool ok11 = true;
     {
         const std::string path = dir + "/ferrum_crossing.json";
@@ -487,7 +489,7 @@ int main(int argc, char** argv) {
         const std::string empty = stateHash(d);
         if (!contains(run(d, "scenario report"), "refused")) ok11 = false;
         if (!contains(run(d, "scenario hash"), "refused")) ok11 = false;
-        if (!contains(run(d, "scenario snapshot"), "Stub 8")) ok11 = false;
+        if (!contains(run(d, "scenario snapshot"), "no board")) ok11 = false;
         if (!contains(run(d, "scenario wobble"), "refused")) ok11 = false;
         if (stateHash(d) != empty) ok11 = false;          // a refusal changed nothing
 
@@ -548,6 +550,64 @@ int main(int argc, char** argv) {
         if (stateHash(f) != clean) ok11 = false;
     }
     check("GATE-DRV-11 scenario-load-is-the-scenario-modules", ok11);
+
+    // --- GATE-DRV-12 ---------------------------------------------------------
+    // Row 8. The driver holds no view model of its own: `snapshot` composes the world
+    // and Ui.h projects it, so the printed numbers are the module's. Asserted by
+    // rebuilding the same snapshot through Ui.h and comparing field for field -- and
+    // by spending ONE of the two per-unit flags, which a driver carrying its own
+    // single "done" bit could not render (T-TURN-01).
+    bool ok12 = true;
+    {
+        Session d;
+        std::string e;
+        sessionInit(d, dir, e);
+        if (!loadFixture(d, "river", e)) ok12 = false;
+        run(d, "place 0 Infantry 0 0");
+        run(d, "place 1 Tank 4 4");
+        run(d, "match 0 20");
+
+        const UiSnapshot expect = buildUiSnapshot(uiWorldOf(d));
+        const std::vector<std::string> printed = run(d, "snapshot");
+        if (!contains(printed, "Stub 8")) ok12 = false;
+        // `scenario snapshot` is the same command under the older spelling.
+        if (run(d, "scenario snapshot") != printed) ok12 = false;
+
+        // Every unit the session holds appears in the projection, with the stats the
+        // driver looked up rather than any it kept.
+        if (expect.units.size() != d.units.size()) ok12 = false;
+        for (const DriverUnit& u : d.units) {
+            const UiUnitView* v = findUiUnitView(expect, u.id);
+            if (v == nullptr || v->side != u.side || v->hp != u.hp ||
+                !hexEqual(v->hex, u.hex) ||
+                v->hpMax != d.unitDefs[u.defIndex].hpMax) ok12 = false;
+        }
+        if (expect.match.turnCap != d.match.turnCap ||
+            expect.match.sideToMove != d.match.activeSide ||
+            expect.objectiveTotal != static_cast<int>(d.economy.objectives.size())) ok12 = false;
+
+        // Spend exactly one flag. The projection must show one spent and one not --
+        // the state a single field cannot express.
+        const DriverUnit* mover = nullptr;
+        for (const DriverUnit& u : d.units) if (u.side == d.match.activeSide) { mover = &u; break; }
+        if (mover == nullptr) ok12 = false;
+        else {
+            std::string me;
+            if (!markMoved(d.match, mover->id, mover->side, me)) ok12 = false;
+            const UiUnitView* v = findUiUnitView(buildUiSnapshot(uiWorldOf(d)), mover->id);
+            if (v == nullptr || !v->hasMoved || v->hasActed) ok12 = false;
+            const std::vector<std::string> after = run(d, "snapshot");
+            if (!contains(after, "hasMoved 1")) ok12 = false;
+            if (!contains(after, "hasActed 0")) ok12 = false;
+        }
+
+        // A view model of no board is not a thing to invent.
+        Session n;
+        sessionInit(n, dir, e);
+        if (!contains(run(n, "snapshot"), "unknown command") &&
+            !contains(run(n, "snapshot"), "no board")) ok12 = false;
+    }
+    check("GATE-DRV-12 snapshot-is-the-ui-module", ok12);
 
     std::printf("\n%d/%d passed\n", g_total - g_fail, g_total);
     return g_fail == 0 ? 0 : 1;
