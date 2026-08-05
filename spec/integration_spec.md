@@ -83,18 +83,36 @@ file, or crew moving on without a re-sync. Vendoring the working tree would let 
 dirty edit be recorded under a clean commit hash, which is precisely the failure
 T-INT-01 would then be unable to see.
 
-It writes two **UE-owned** files that have no counterpart in this repo and are
-excluded from the hash comparison: `StratRules.Build.cs` and
-`StratRules.manifest.json`, the latter recording `rulesCommit`.
+It writes two further files, and **neither is excluded from the check any more.**
+`StratRules.Build.cs` is now tracked in this repo at `ue_module/` and is vendored
+from the object store like the sources, so it hash-matches a blob at
+`rulesCommit`. `StratRules.manifest.json` records `rulesCommit` itself, and is
+rebuilt from `ue_module/manifest_fields.json` plus the re-derived hashes.
+
+**Why the manifest is recomputed rather than hash-matched.** It cannot be stored
+in this repo at the commit it names: a file's bytes cannot contain the sha of the
+tree that holds them. That is a fixed point, not a gap — recomputation is the
+strongest check available on it, and it is written out in `crew/tools.py` rather
+than imported from the vendor script, so it asserts something about the generator
+instead of restating it.
 
 ## Invariants
 
 ```
-  T-INT-01  source identity. Every file in Source/StratRules/ other than the two
-            UE-owned ones hash-matches cpp_reference/<same name> at the recorded
-            rulesCommit; the vendored SET is exactly the set of *.h and
-            *.good.cpp at that commit, so a missing file and an unexpected file
-            are both findings; and rulesCommit resolves in this repo.
+  T-INT-01  source identity. EVERY file in Source/StratRules/ is accounted for at
+            the recorded rulesCommit -- nothing is exempt -- by two mechanisms:
+
+              hash-match      the 20 sources against cpp_reference/<same name>,
+                              and StratRules.Build.cs against
+                              ue_module/StratRules.Build.cs
+              recomputation   StratRules.manifest.json is rebuilt from
+                              ue_module/manifest_fields.json plus the
+                              independently re-derived hashes, and compared
+                              byte-for-byte
+
+            The accounted SET is exactly those 22 names, so a missing file and an
+            unexpected file are both findings; and rulesCommit resolves in this
+            repo.
 
             THE CHECK DOES NOT TRUST THE MANIFEST'S OWN HASHES, and does not
             import the vendor script's file list. It takes only rulesCommit from
@@ -136,6 +154,24 @@ inputs, each restored afterwards:
 
 The second row is the one that matters: it is what distinguishes this check from
 a manifest-vs-disk comparison, which every one of these edits would pass.
+
+**The widening was shown to be a widening**, by running the three new known-bad
+inputs against the check as it stood BEFORE the change and again after. A gate
+that passes after an extension has not been shown to have gained anything; a
+gate that passed the same input *before* it has:
+
+| Known-bad input | Before widening | After |
+|---|---|---|
+| a comment appended to `StratRules.Build.cs` | T-INT-01 **PASS** — undetected | T-INT-01 FAIL |
+| the manifest's `note` altered | T-INT-01 **PASS** — undetected | T-INT-01 FAIL |
+| the manifest's `generator` altered | T-INT-01 **PASS** — undetected | T-INT-01 FAIL |
+| an extra `Sneaky.good.cpp` added (control) | T-INT-01 FAIL | T-INT-01 FAIL |
+
+Two further controls on the new mechanisms, both as designed: editing
+`ue_module/StratRules.Build.cs` **in the working tree** does not move the verdict,
+because the check reads the blob at `rulesCommit`; and tampering a vendored source
+*together with* its recorded hash in the manifest still FAILs, which is the
+manifest-hash control carried over to the widened check.
 
 ## When the UE project is absent
 
