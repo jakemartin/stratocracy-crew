@@ -459,6 +459,55 @@ def run_week1(log) -> dict:
         return {"status": "error", "gate_passed": False,
                 "failures_caught": p1.get("failures", [])}
 
+    # --- row 10 part (c): the Balance Analyst's self-play log producer ------------
+    log("\n[Director -> Systems Engineer] spec/balance_spec.md handed over (row 10 "
+        "part (c) — the self-play log producer). T-SAVE-07 asserts that a Balance "
+        "Analyst self-play log validates and replays as a save file, one format, no "
+        "dialect drift — and this repo had NO PRODUCER of such a log at any scope: "
+        "cpp_reference/selfplay.cpp is a combat-only 1v1 duel harness over Combat.h "
+        "that prints a table and opens no file. A THIRD registry row for one ledger "
+        "row, because §4.11 gives part (c) its own dependency set — rows 4, 5 and 6, "
+        "the command set, the match that runs to a result, and the AI that plays it — "
+        "and folding it into `replay` would put row 6 inside part (b)'s claim. Row 10 "
+        "is a PROPOSED ledger row and still has none to flip.")
+    log(tools.write_module_impl_fn("balance",
+                                   tools.read_reference("Balance.buggy.cpp")))
+    log("[Systems Engineer] pass 1 authored — three defects, each a mechanical edit of "
+        "the good module: Attack is tagged by the ACTING unit's hex rather than the "
+        "TARGET's; Build's `unitId` carries the acting unit rather than the unit BUILT; "
+        "and a command is logged when PROPOSED rather than when ACCEPTED.\n")
+
+    c1 = tools.run_row_gate_fn("balance")
+    log("[Systems Engineer · self-test] " + c1["summary"])
+    for line in c1["log"].splitlines():
+        log("    " + line)
+    if c1["passed"]:
+        log("[note] pass 1 unexpectedly passed — the bundled 'buggy' self-play module "
+            "should fail two translation checks, the run, the command set, the "
+            "accepted-only check and T-SAVE-07 clause (b); continuing.\n")
+    else:
+        log(f"\n[Systems Engineer · self-test] BLOCK — "
+            f"{', '.join(sorted(set(c1['failures'])))} caught it. The shape worth "
+            "naming: T-SAVE-07's clauses (a) and (c) PASS against this module. The "
+            "FORMAT is agnostic to whether the rules accept a command, so a log full "
+            "of refused entries still validates and still round-trips byte-identically "
+            "— only clause (b), which REPLAYS the log, can see it. A suite that read "
+            "'validates' as the whole of T-SAVE-07 would have shipped this.\n")
+
+    log("[Systems Engineer] re-fed §4.9 and Save.h: Attack is spelled by TARGET hex, a "
+        "Build entry names the unit BUILT, and only a command the rules accepted enters "
+        "the log.")
+    log(tools.write_module_impl_fn("balance",
+                                   tools.read_reference("Balance.good.cpp")))
+    c2 = tools.run_row_gate_fn("balance")
+    log("[Systems Engineer · self-test] " + c2["summary"])
+    for line in c2["log"].splitlines():
+        log("    " + line)
+    if not c2["passed"]:
+        log("[stop] row 10 part (c) pass 2 did not pass — see the failures above.")
+        return {"status": "error", "gate_passed": False,
+                "failures_caught": c1.get("failures", [])}
+
     # --- the debug-command driver: week 1's OTHER promise ------------------------
     log("\n[Director -> Systems Engineer] spec/driver_spec.md handed over. §4.4 week 1 "
         "promises rows 1-3 AND 'Playable via debug commands'; the rows are green and "

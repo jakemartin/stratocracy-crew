@@ -42,11 +42,11 @@ ACCEPT = "acceptance.json"   # the release record — ONLY the Test Engineer wri
 # ledger row rather than to "week 1".
 # --------------------------------------------------------------------------- #
 WEEK1_FIXED = ("Hex.h", "Data.h", "Move.h", "Economy.h", "Turn.h", "Ai.h", "Scenario.h",
-               "Ui.h", "Save.h", "Replay.h", "Driver.h",
+               "Ui.h", "Save.h", "Replay.h", "Balance.h", "Driver.h",
                "test_hex.cpp", "test_data.cpp", "test_move.cpp", "test_economy.cpp",
                "test_turn.cpp", "test_ai.cpp", "test_scenario.cpp", "test_ui.cpp",
-               "test_save.cpp", "test_replay.cpp", "test_driver.cpp",
-               "driver_main.cpp")
+               "test_save.cpp", "test_replay.cpp", "test_balance.cpp",
+               "test_driver.cpp", "driver_main.cpp")
 
 WEEK1_ROWS = {
     "hex": {
@@ -127,7 +127,8 @@ WEEK1_ROWS = {
         # The acceptance set §4.7's Save stub writes is T-SAVE-01..07. This suite closes
         # a SUBSET: T-SAVE-04, which closes on part (a) alone. T-SAVE-01/02/03/05 need
         # the replayer and close in the `replay` row below; T-SAVE-06 is in-editor (†);
-        # T-SAVE-07 needs row 6's self-play (part c). The runner names them.
+        # T-SAVE-07 needs row 6's self-play and closes in the `balance` row (part c).
+        # The runner names them.
         "tests": "T-SAVE-04 + GATE-SAVE-PARSE",
     },
     # Row 10 part (b) — the headless replayer and §4.10's canonical state hash. A
@@ -154,6 +155,26 @@ WEEK1_ROWS = {
         # precedent.
         "tests": "T-SAVE-01, 02, 03, 05 + GATE-REPLAY-*",
     },
+    "balance": {
+        "row": 10, "system": "Save & replay, part (c) — the self-play log producer",
+        "spec": "spec/balance_spec.md",
+        "impl": "Balance.cpp",
+        # THE LINK SET IS THE CLAIM, a third time. §4.11 puts part (c)'s closure on rows
+        # 4, 5 and 6 — the command set, the match that runs to a result, and the AI that
+        # plays it — so `Ai.cpp`, `Economy.cpp` and `Turn.cpp` are load-bearing here in a
+        # way they are not in part (a)'s set. `Replay.cpp` is part (b), which this part
+        # consumes and does not re-implement. `Scenario.cpp` is absent for part (b)'s own
+        # reason: the board arrives as state and `scenarioHash` stays an opaque string.
+        "sources": ["Balance.cpp", "Replay.cpp", "Save.cpp", "Hex.cpp", "Data.cpp",
+                    "Move.cpp", "Economy.cpp", "Turn.cpp", "Combat.cpp", "Ai.cpp",
+                    "test_balance.cpp"],
+        "stem": "test_balance_runner",
+        # ONE acceptance ID closes here — T-SAVE-07, in three clauses. T-SAVE-06 does not:
+        # it is row 10's only †, is asserted jointly with T-INT-02, and no in-editor
+        # Automation harness exists. GATE-BALANCE-* mint no acceptance ID, on the
+        # GATE-SAVE-PARSE and GATE-REPLAY-* precedent.
+        "tests": "T-SAVE-07 + GATE-BALANCE-*",
+    },
     # Not a §4.7 stub and not a ledger row: the debug-command driver builds no rules
     # system, so its checks are named GATE-DRV-* rather than T-* and move no count in
     # the GDD. It closes §4.4 week 1's OTHER promise, "Playable via debug commands".
@@ -170,7 +191,7 @@ WEEK1_ROWS = {
 # `save` is row 10 part (a) and depends on nothing, so its position is free — it sits in
 # ledger-row order, after row 8 and still ahead of the driver.
 WEEK1_ORDER = ("hex", "data", "move", "fame", "turn", "ai", "scenario", "ui", "save",
-               "replay", "driver")
+               "replay", "balance", "driver")
 WEEK1_ACCEPT = "acceptance_week1.json"  # the week-1 release record — Test Engineer only
 
 # The playable artifact itself — built from the same sources plus the REPL entry point.
@@ -351,8 +372,8 @@ def run_week1_gate_fn() -> dict:
                         "T-MOVE-01..06) + row 4 (T-FAME-01..09) + row 5 "
                         "(T-TURN-01..10) + row 6 (T-AI-01..06 + GATE-AI-SMOKE) + "
                         "row 7's SUBSET of T-SCN and row 8's SUBSET of T-UI + row 10's "
-                        "parts (a) and (b) (T-SAVE-01, 02, 03, 04, 05 + "
-                        "GATE-SAVE-PARSE + GATE-REPLAY-*) (see each "
+                        "parts (a), (b) and (c) (T-SAVE-01, 02, 03, 04, 05, 07 + "
+                        "GATE-SAVE-PARSE + GATE-REPLAY-* + GATE-BALANCE-*) (see each "
                         "row's not-covered list) + the debug driver "
                         "(GATE-DRV-01..12)" if passed else
                         "WEEK-1 GATE BLOCK — " + "; ".join(
@@ -439,14 +460,11 @@ def certify_week1_fn() -> dict:
             "Automation harness exists. Its OTHER blocker — §4.10's canonical state "
             "hash being unbuilt — is removed by part (b), so the editor pass is now "
             "the whole of what it waits on. It is the only † of row 10's seven.",
-            "T-SAVE-07 — harness compatibility (a Balance Analyst self-play log "
-            "validates and replays as a save). cpp_reference/selfplay.cpp is a "
-            "combat-only 1v1 duel harness that prints a table and emits no §4.10 "
-            "command log, so this ID has no producer in this repo at any scope. Part "
-            "(c), §4.4 week 4.",
-            "Row 10's Save and Replay modules are NOT VENDORED into Source/StratRules/. "
+            "Row 10's Save, Replay and Selfplay modules are NOT VENDORED into "
+            "Source/StratRules/. "
             "§4.9 enumerates the ten modules the sync script carries and these are an "
-            "eleventh and a twelfth. Ruled 2026-08-05, at part (b): vendoring waits on "
+            "eleventh, a twelfth and a thirteenth. Ruled 2026-08-05, at part (b): "
+            "vendoring waits on "
             "§4.9 part 2, since no bridge exists — no load mapping, no command surface, "
             "no event list, no actor and no widget — so the bridge consumer is still "
             "hypothetical, while vendoring would re-date T-INT-01's and T-INT-04's "
