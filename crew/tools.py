@@ -12,6 +12,7 @@ The same functions back both execution paths (see run.py):
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -427,6 +428,178 @@ def run_self_play_fn() -> dict:
 def read_reference(name: str) -> str:
     """Helper for the offline path: load a bundled reference implementation."""
     return (REF / name).read_text(encoding="utf-8")
+
+
+# --------------------------------------------------------------------------- #
+# GDD §4.11 row 9 — the presentation bridge's headless half (§4.9 Spec Stub 9).
+#
+# T-INT-01 and T-INT-04 are the two invariants of that stub that are NOT marked † in
+# §4.11: they need no editor and no engine, so §4.9's Acceptance line runs them "on
+# every gate run" and says of T-INT-04 that "the gate run itself is the assert".
+# T-INT-02, T-INT-03 and T-INT-05 are the editor pass and do not run here.
+# --------------------------------------------------------------------------- #
+STRATRULES_DIR = ("Source", "StratRules")
+STRATRULES_MANIFEST = "StratRules.manifest.json"
+# Written by the vendor script, with no counterpart in the crew repo, so neither is
+# subject to T-INT-01's hash comparison. Every OTHER file must be a vendored source.
+STRATRULES_UE_OWNED = ("StratRules.Build.cs", STRATRULES_MANIFEST)
+
+
+def find_ue_project(explicit: str | None = None) -> Path | None:
+    """Locate the UE project that holds Source/StratRules/, or None."""
+    cand = Path(explicit).resolve() if explicit else (ROOT.parent / "Stratocracy")
+    return cand if (cand / "Source").is_dir() else None
+
+
+def _git_out(args: list[str]) -> tuple[bool, bytes]:
+    p = subprocess.run(["git", *args], cwd=str(ROOT), capture_output=True)
+    return p.returncode == 0, (p.stdout if p.returncode == 0 else p.stderr)
+
+
+def run_integration_gate_fn(ue_path: str | None = None) -> dict:
+    """§4.9 Stub 9, headless half: T-INT-01 source identity + T-INT-04 no engine deps.
+
+    T-INT-01 DOES NOT TRUST THE MANIFEST'S OWN HASHES, and does not import the vendor
+    script's file list. It takes only `rulesCommit` from the manifest, then re-derives
+    both the expected file SET and every expected hash from the crew repo at that
+    commit via `git ls-tree` / `git show`. A hand edit that changed a vendored source
+    and its recorded hash together still fails, and a vendor script that silently
+    dropped a module still fails — neither of which a manifest-vs-disk comparison or a
+    shared constant could see.
+
+    T-INT-04 compiles each vendored implementation to an OBJECT file, not an
+    executable: the module has no `main()` by construction, so object compilation is
+    what "compiles standalone" can mean here. It runs outside UBT entirely, against
+    the vendored copy rather than against cpp_reference/, which is the only way it can
+    witness an engine header that vendoring introduced.
+    """
+    lines: list[str] = []
+    results: list[tuple[str, bool, str]] = []
+
+    def check(ident: str, ok: bool, detail: str) -> None:
+        results.append((ident, ok, detail))
+        lines.append(f"{'PASS' if ok else 'FAIL'}  {ident} {detail}")
+
+    ue = find_ue_project(ue_path)
+    if ue is None:
+        where = ue_path or str(ROOT.parent / "Stratocracy")
+        return {"ran": False, "passed": False, "failures": [],
+                "summary": ("INTEGRATION GATE SKIPPED — no UE project at "
+                            f"{where}. T-INT-01 and T-INT-04 assert over "
+                            "Source/StratRules/, which is not on this machine; "
+                            "nothing was checked and nothing is claimed."),
+                "log": ""}
+
+    dest = ue.joinpath(*STRATRULES_DIR)
+    if not dest.is_dir():
+        return {"ran": False, "passed": False, "failures": [],
+                "summary": (f"INTEGRATION GATE SKIPPED — {dest} does not exist. "
+                            "Run `python sync_stratrules.py` to vendor first."),
+                "log": ""}
+
+    # ---- T-INT-01: source identity ------------------------------------------ #
+    manifest_path = dest / STRATRULES_MANIFEST
+    commit = None
+    if not manifest_path.is_file():
+        check("T-INT-01", False,
+              f"no {STRATRULES_MANIFEST} — nothing records which crew commit these "
+              "files came from, so the evidence chain is broken at the vendor step")
+    else:
+        try:
+            commit = json.loads(manifest_path.read_text(encoding="utf-8"))["rulesCommit"]
+        except Exception as exc:
+            check("T-INT-01", False, f"{STRATRULES_MANIFEST} unreadable: {exc}")
+
+    if commit is not None:
+        ok_commit, _ = _git_out(["cat-file", "-e", f"{commit}^{{commit}}"])
+        if not ok_commit:
+            check("T-INT-01", False,
+                  f"recorded rulesCommit {commit[:7]} is not a commit in this crew "
+                  "repo — the recorded source cannot be produced")
+        else:
+            ok_tree, tree = _git_out(["ls-tree", "--name-only", f"{commit}:cpp_reference"])
+            expected = sorted(
+                n for n in tree.decode("utf-8", "replace").split()
+                if n.endswith(".h") or n.endswith(".good.cpp"))
+            present = sorted(p.name for p in dest.iterdir()
+                             if p.is_file() and p.name not in STRATRULES_UE_OWNED)
+            missing = [n for n in expected if n not in present]
+            extra = [n for n in present if n not in expected]
+            mismatched = []
+            for name in expected:
+                if name in missing:
+                    continue
+                ok_blob, blob = _git_out(["show", f"{commit}:cpp_reference/{name}"])
+                if not ok_blob:
+                    mismatched.append(f"{name} (not at {commit[:7]})")
+                    continue
+                want = hashlib.sha256(blob).hexdigest()
+                got = hashlib.sha256((dest / name).read_bytes()).hexdigest()
+                if want != got:
+                    mismatched.append(name)
+            problems = []
+            if missing:
+                problems.append(f"missing {len(missing)}: {', '.join(missing)}")
+            if extra:
+                problems.append(f"unexpected {len(extra)}: {', '.join(extra)}")
+            if mismatched:
+                problems.append(f"hash mismatch {len(mismatched)}: {', '.join(mismatched)}")
+            if problems:
+                check("T-INT-01", False,
+                      f"source identity vs {commit[:7]} — " + "; ".join(problems))
+            else:
+                check("T-INT-01", True,
+                      f"source identity: {len(expected)} vendored files hash-match "
+                      f"cpp_reference/ at {commit[:7]}, and no other file is present")
+
+    # ---- T-INT-04: no engine deps ------------------------------------------- #
+    cc = find_compiler()
+    if cc is None:
+        check("T-INT-04", False,
+              "no C++ compiler on PATH — the gate run IS the assert, so a gate that "
+              "cannot compile asserts nothing")
+    else:
+        impls = sorted(p.name for p in dest.glob("*.good.cpp"))
+        if not impls:
+            check("T-INT-04", False, "no vendored implementations to compile")
+        else:
+            objdir = BUILD / "stratrules_obj"
+            objdir.mkdir(parents=True, exist_ok=True)
+            broken = []
+            for name in impls:
+                if _is_msvc(cc):
+                    cmd = [cc, "/nologo", "/std:c++17", "/EHsc", "/c",
+                           f"/I{dest}", str(dest / name), f"/Fo:{objdir / (name + '.obj')}"]
+                else:
+                    cmd = [cc, "-std=c++17", "-c", f"-I{dest}", str(dest / name),
+                           "-o", str(objdir / (name + ".o"))]
+                p = subprocess.run(cmd, capture_output=True, text=True,
+                                   encoding="utf-8", errors="replace", cwd=str(objdir))
+                if p.returncode != 0:
+                    detail = ((p.stdout + p.stderr) if _is_msvc(cc)
+                              else (p.stderr or p.stdout)).strip().splitlines()
+                    broken.append(f"{name}: {detail[0] if detail else 'compile failed'}")
+            if broken:
+                check("T-INT-04", False,
+                      f"standalone compile under {os.path.basename(cc)} — "
+                      + "; ".join(broken))
+            else:
+                check("T-INT-04", True,
+                      f"no engine deps: {len(impls)} vendored implementations compile "
+                      f"standalone under {os.path.basename(cc)}, outside UBT")
+
+    failures = [ident for ident, ok, _ in results if not ok]
+    passed = not failures
+    tally = f"{sum(1 for _, ok, _ in results if ok)}/{len(results)} passed"
+    lines.append("")
+    lines.append("T-INT-02, T-INT-03 and T-INT-05 are the editor pass (§4.9 "
+                 "Acceptance) and DID NOT RUN — no in-editor Automation harness "
+                 "exists. Row 9 cannot flip on this gate alone.")
+    lines.append(tally)
+    summary = ("INTEGRATION GATE PASS — T-INT-01, T-INT-04" if passed
+               else f"INTEGRATION GATE BLOCK — failing: {', '.join(failures)}")
+    return {"ran": True, "passed": passed, "failures": failures,
+            "summary": f"{summary} ({tally})", "log": "\n".join(lines)}
 
 
 # --------------------------------------------------------------------------- #

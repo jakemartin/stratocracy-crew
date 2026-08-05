@@ -325,6 +325,35 @@ per-unit members under two non-widget owners, `done` (the selection machine) and
 `lockedThisTurn` (the guidance layer), whose lifecycles differ. This module declares
 the block and does not fill it.
 
+### Row 9 — presentation bridge, headless half (a partial pass, like rows 7 and 8)
+
+`spec/integration_spec.md`, **2/2** — and this row builds no C++ at all. Its subject
+is the *vendoring step* between this repo and the UE project: `sync_stratrules.py`
+copies the ten modules' headers and implementations into `Source/StratRules/` and
+records the crew commit they came from, and the two headless invariants assert that
+the step preserved what §3's ledger says it preserved.
+
+    python sync_stratrules.py     # vendor HEAD into ../Stratocracy
+    python run.py --integration   # assert it: T-INT-01, T-INT-04
+
+**The script vendors from the git object store, not the working tree.** That makes
+source identity true *by construction*, so the only ways `T-INT-01` can later fail
+are the ones it exists to catch — a hand edit, an added or deleted file, or crew
+moving on without a re-sync.
+
+**`T-INT-01` does not trust the manifest's own hashes**, and does not import the
+vendor script's file list. It takes only `rulesCommit` from the manifest and
+re-derives both the expected file set and every expected hash from that commit. An
+edit that changed a vendored source *and* its recorded hash together still fails —
+which a manifest-vs-disk comparison would not catch, and is the reason the check is
+written this way. All five known-bad inputs were run and all five blocked; the table
+is in the spec.
+
+**`T-INT-02`, `T-INT-03` and `T-INT-05` are the editor pass and did not run**, so
+the ledger row does **not** flip — rows 2, 7 and 8's posture. The module is defined
+but **not wired into a build target**: `Stratocracy.uproject` does not list it, no
+UBT build was run, and in-engine compilation is what the editor pass gates.
+
 ### The other half of week 1 — "Playable via debug commands"
 
 §4.4's week-1 goal has two halves, and the row flips only closed one. The second is a
@@ -441,8 +470,13 @@ file and a real view model, not the game.
 # Offline — no API key, no install; needs only a C++ compiler. Always runs.
 python run.py --offline
 
-# Just the built rows (§4.11 rows 1-8) + the debug driver, skipping the combat crew:
+# Just the built rows (§4.11 rows 1-8) + the debug driver, skipping the combat crew.
+# Ends with row 9's headless half, which SKIPS if ../Stratocracy is not checked out:
 python run.py --week1
+
+# Vendor the rules module into the UE project, then assert source identity (row 9):
+python sync_stratrules.py
+python run.py --integration
 
 # Then play it — the artifact §4.4 week 1 asks for:
 cd build && ./stratocracy_debug ../data     # 'help', 'fixture list', 'quit'

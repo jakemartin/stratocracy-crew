@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Stratocracy agent crew — entrypoint (Assignment #3).
 
-    python run.py            # live CrewAI crew if ANTHROPIC_API_KEY is set, else offline
-    python run.py --offline  # force the deterministic no-API pipeline
-    python run.py --online   # force the live crew (errors if no key)
+    python run.py              # live CrewAI crew if ANTHROPIC_API_KEY is set, else offline
+    python run.py --offline    # force the deterministic no-API pipeline
+    python run.py --online     # force the live crew (errors if no key)
+    python run.py --week1      # §4.11 rows 1-8 + the driver, then row 9's headless half
+    python run.py --integration  # §4.11 row 9 alone: T-INT-01, T-INT-04
 
 Always produces build/run_log.md, build/Combat.cpp, and build/balance_report.md, and
 never crashes: if the live crew errors (missing key, network, etc.) it falls back to the
@@ -98,6 +100,26 @@ def run_week1_stage() -> dict:
     return _rw(log)
 
 
+def run_integration_stage() -> dict:
+    """GDD §4.11 row 9 — §4.9 Spec Stub 9's headless half: T-INT-01 and T-INT-04.
+
+    Asserts over the UE project's vendored Source/StratRules/, not over cpp_reference/.
+    §4.9's Acceptance line runs these two "on every gate run", so --week1 calls this
+    too; --integration runs it alone. When no UE checkout is present it SKIPS with the
+    reason stated and claims nothing — a gate that cannot see its subject must not
+    report on it.
+    """
+    from crew.tools import run_integration_gate_fn
+    log("\n" + "=" * 78)
+    log("ROW 9 — §4.9 integration, headless half (T-INT-01, T-INT-04)")
+    log("=" * 78 + "\n")
+    r = run_integration_gate_fn()
+    log("[Test Engineer] " + r["summary"])
+    for line in r["log"].splitlines():
+        log("    " + line)
+    return r
+
+
 def run_offline() -> None:
     from crew.offline import run_offline as _ro
     res = _ro(log)
@@ -121,13 +143,18 @@ def main() -> int:
     force_offline = "--offline" in args
     force_online = "--online" in args
     week1_only = "--week1" in args
+    integration_only = "--integration" in args
     have_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
 
     header = ""
     try:
-        if week1_only:
+        if integration_only:
+            run_integration_stage()
+            header = "integration only (§4.11 row 9, headless half)"
+        elif week1_only:
             run_week1_stage()
-            header = "week 1 only (§4.11 rows 1-8)"
+            run_integration_stage()
+            header = "week 1 only (§4.11 rows 1-8) + row 9's headless half"
         elif force_online or (have_key and not force_offline):
             try:
                 run_live()
@@ -143,7 +170,9 @@ def main() -> int:
     finally:
         _flush_log(header or "run")
 
-    if week1_only:
+    if integration_only:
+        log(f"\nArtifacts in {BUILD}/ : stratrules_obj/, run_log.md")
+    elif week1_only:
         log(f"\nArtifacts in {BUILD}/ : Hex.cpp, Data.cpp, Move.cpp, Economy.cpp, "
             "Turn.cpp, Ai.cpp, Scenario.cpp, Ui.cpp, Driver.cpp, stratocracy_debug, "
             "acceptance_week1.json, run_log.md")
