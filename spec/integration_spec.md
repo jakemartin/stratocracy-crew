@@ -181,23 +181,35 @@ would put a green T-INT-01 beside a vendoring that never happened.
 
 ## What this row does NOT do, stated so it is not inferred
 
-- **The module IS wired into a build target, and that closes nothing.** Until
-  2026-08-05 `Stratocracy.uproject` did not list it and no target depended on it,
-  so UBT never compiled it. It now lists it, and `StratocracyEditor` links
-  `UnrealEditor-StratRules.dll`. **In-engine compilation is what the editor pass
-  gates, and T-INT-04 deliberately asserts the standalone compile instead**, so a
-  green UBT build moves no acceptance ID and is not evidence for one. The first
-  UBT attempt **failed**: both targets set `BuildSettingsVersion.V7`, and V2
+- **The module is still not wired into a build target.** At `30a73f0`
+  `Stratocracy.uproject` does not list it and no target depends on it, so UBT
+  does not compile it. **In-engine compilation is what the editor pass gates,
+  and T-INT-04 deliberately asserts the standalone compile instead**, so a green
+  UBT build would move no acceptance ID and would not be evidence for one.
+- **The UBT compile has been measured, out of tree, and it needs the Build.cs
+  line this commit adds.** Registering the module and building `StratocracyEditor`
+  fails on one diagnostic: both targets set `BuildSettingsVersion.V7`, and V2
   onward raises `ShadowVariableWarningLevel` to `Error`, so `Driver.good.cpp`'s
-  shadowed local `r` stopped the build as `error C4456`. The other nine modules
-  compiled clean. The fix is one line in `ue_module/StratRules.Build.cs`
-  downgrading that warning for this module only — chosen over editing the
-  certified source, which would have re-dated T-INT-04's closure as well as
-  T-INT-01's. **UBT compiles these sources as C++20** with MSVC strict
-  conformance (`BuildSettingsVersion` V4 onward), while the standalone gate
-  compiles them as C++17: the same bytes, two language standards. That is filed
-  as a change request against §4.9's "pure C++17" wording and is **not** a
-  finding about the sources, which compile clean under both.
+  shadowed local `r` stops the build as `error C4456`. The other nine modules
+  compile clean. With `CppCompileWarningSettings.ShadowVariableWarningLevel =
+  WarningLevel.Warning` the build succeeds and links `UnrealEditor-StratRules.dll`.
+  Both runs were made with the registration reverted afterwards and nothing
+  committed in the UE repo, so this is a measurement rather than a landing.
+  **UBT compiles these sources as C++20** with MSVC strict conformance
+  (`BuildSettingsVersion` V4 onward), while the standalone gate compiles them as
+  C++17: the same bytes, two language standards. Filed as a change request
+  against §4.9's "pure C++17" wording; **not** a finding about the sources,
+  which compile clean under both.
+- **The Build.cs line cannot take effect yet, and the reason is a defect in this
+  gate.** It only applies once `Source/StratRules/` is re-vendored, which moves
+  `rulesCommit` — and T-INT-01 derives its expected set by globbing
+  `cpp_reference/` at `rulesCommit`, so any commit at or after `737f666` makes it
+  demand that `Save`, `Replay` and `Balance` be vendored too. Rulings N and R
+  refuse exactly that. **`rulesCommit` has therefore been un-advanceable since
+  `737f666`**, for any reason, and nothing surfaced it because it never moved.
+  The written invariant quantifies over *"every file in `Source/StratRules/`"*,
+  not over every crew source, so the `missing` arm asserts more than the text
+  does. Filed for a Director ruling; **not** repaired here.
 - **No bridge exists.** No load mapping, no command submission, no event list, no
   actor and no widget. §4.9 part 2 is unbuilt.
 - **The canonical state hash HAS SINCE BEEN BUILT**, as §4.11 **row 10**'s part
