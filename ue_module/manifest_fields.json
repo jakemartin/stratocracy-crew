@@ -1,0 +1,7 @@
+{
+  "generator": "sync_stratrules.py",
+  "sourceRepo": "stratocracy-crew",
+  "sourcePrefix": "cpp_reference/",
+  "modulePrefix": "ue_module/",
+  "note": "Vendored verbatim from the git object store at rulesCommit; names are unchanged from the crew repo. T-INT-01 re-derives every hash below from that commit rather than trusting this file, so a hand edit to both a source and its hash here still fails the check. StratRules.Build.cs is tracked in the crew repo under modulePrefix and is hash-matched from the object store the same way. This manifest is verified by RECOMPUTATION rather than by hash-match: it records rulesCommit, so it cannot itself be stored at that commit."
+}

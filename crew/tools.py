@@ -440,9 +440,13 @@ def read_reference(name: str) -> str:
 # --------------------------------------------------------------------------- #
 STRATRULES_DIR = ("Source", "StratRules")
 STRATRULES_MANIFEST = "StratRules.manifest.json"
-# Written by the vendor script, with no counterpart in the crew repo, so neither is
-# subject to T-INT-01's hash comparison. Every OTHER file must be a vendored source.
-STRATRULES_UE_OWNED = ("StratRules.Build.cs", STRATRULES_MANIFEST)
+STRATRULES_BUILD_CS = "StratRules.Build.cs"
+# `ue_module/` holds the UBT wrapper and the manifest's fixed text as TRACKED blobs.
+# Both are read here from the git object store at rulesCommit — never imported from
+# sync_stratrules.py, which would make this check a restatement of the generator
+# rather than an assertion about it.
+STRATRULES_MODULE_PREFIX = "ue_module/"
+STRATRULES_MANIFEST_FIELDS = "manifest_fields.json"
 
 
 def find_ue_project(explicit: str | None = None) -> Path | None:
@@ -466,6 +470,16 @@ def run_integration_gate_fn(ue_path: str | None = None) -> dict:
     and its recorded hash together still fails, and a vendor script that silently
     dropped a module still fails — neither of which a manifest-vs-disk comparison or a
     shared constant could see.
+
+    IT COVERS EVERY FILE IN THE DIRECTORY, by two mechanisms rather than one. The 20
+    sources and `StratRules.Build.cs` hash-match tracked blobs (`cpp_reference/` and
+    `ue_module/` respectively). `StratRules.manifest.json` is REBUILT here from
+    `ue_module/manifest_fields.json` plus the independently re-derived hashes, and
+    compared byte-for-byte. The manifest is not hash-matched because it CANNOT be: it
+    records `rulesCommit`, and a file's bytes cannot contain the sha of the tree that
+    holds them. Recomputation is the strongest available check on it, not a weaker
+    substitute — and it is written out here rather than imported, so it asserts
+    something about the generator instead of restating it.
 
     T-INT-04 compiles each vendored implementation to an OBJECT file, not an
     executable: the module has no `main()` by construction, so object compilation is
@@ -521,22 +535,70 @@ def run_integration_gate_fn(ue_path: str | None = None) -> dict:
             expected = sorted(
                 n for n in tree.decode("utf-8", "replace").split()
                 if n.endswith(".h") or n.endswith(".good.cpp"))
-            present = sorted(p.name for p in dest.iterdir()
-                             if p.is_file() and p.name not in STRATRULES_UE_OWNED)
-            missing = [n for n in expected if n not in present]
-            extra = [n for n in present if n not in expected]
+            # Every file in the directory is now accounted for: the 20 sources and the
+            # UBT wrapper hash-match tracked blobs; the manifest is REBUILT here and
+            # compared byte-for-byte. Nothing is exempt.
+            hashed = {n: f"cpp_reference/{n}" for n in expected}
+            hashed[STRATRULES_BUILD_CS] = (
+                f"{STRATRULES_MODULE_PREFIX}{STRATRULES_BUILD_CS}")
+            present = sorted(p.name for p in dest.iterdir() if p.is_file())
+            accounted = sorted(list(hashed) + [STRATRULES_MANIFEST])
+            missing = [n for n in accounted if n not in present]
+            extra = [n for n in present if n not in accounted]
             mismatched = []
-            for name in expected:
+            derived: dict[str, str] = {}
+            for name, path in sorted(hashed.items()):
                 if name in missing:
                     continue
-                ok_blob, blob = _git_out(["show", f"{commit}:cpp_reference/{name}"])
+                ok_blob, blob = _git_out(["show", f"{commit}:{path}"])
                 if not ok_blob:
-                    mismatched.append(f"{name} (not at {commit[:7]})")
+                    mismatched.append(f"{name} (no {path} at {commit[:7]})")
                     continue
                 want = hashlib.sha256(blob).hexdigest()
+                derived[name] = want
                 got = hashlib.sha256((dest / name).read_bytes()).hexdigest()
                 if want != got:
                     mismatched.append(name)
+
+            # ---- the manifest, by recomputation rather than by hash-match --------- #
+            # It records rulesCommit, so it cannot be stored in the crew repo at that
+            # commit — a file's bytes cannot contain the sha of the tree holding them.
+            # Recomputing it from the tracked fields is therefore the STRONGEST check
+            # available, not a weaker substitute for hashing a blob.
+            manifest_problem = None
+            if STRATRULES_MANIFEST in missing:
+                manifest_problem = None  # already reported as missing
+            else:
+                ok_f, fblob = _git_out(
+                    ["show", f"{commit}:{STRATRULES_MODULE_PREFIX}"
+                             f"{STRATRULES_MANIFEST_FIELDS}"])
+                if not ok_f:
+                    manifest_problem = (f"no {STRATRULES_MODULE_PREFIX}"
+                                        f"{STRATRULES_MANIFEST_FIELDS} at {commit[:7]}")
+                else:
+                    try:
+                        f = json.loads(fblob.decode("utf-8"))
+                        want_manifest = json.dumps({
+                            "rulesCommit": commit,
+                            "generator": f["generator"],
+                            "sourceRepo": f["sourceRepo"],
+                            "sourcePrefix": f["sourcePrefix"],
+                            "modulePrefix": f["modulePrefix"],
+                            "note": f["note"],
+                            "files": {n: derived[n] for n in expected},
+                            "moduleFiles": {
+                                STRATRULES_BUILD_CS: derived[STRATRULES_BUILD_CS]},
+                        }, indent=2) + "\n"
+                        got_manifest = manifest_path.read_bytes()
+                        if got_manifest != want_manifest.encode("utf-8"):
+                            manifest_problem = (
+                                f"{STRATRULES_MANIFEST} is not what {commit[:7]} "
+                                "implies — recomputed bytes differ")
+                    except KeyError as exc:
+                        manifest_problem = f"manifest fields incomplete: {exc}"
+                    except Exception as exc:
+                        manifest_problem = f"manifest recomputation failed: {exc}"
+
             problems = []
             if missing:
                 problems.append(f"missing {len(missing)}: {', '.join(missing)}")
@@ -544,13 +606,17 @@ def run_integration_gate_fn(ue_path: str | None = None) -> dict:
                 problems.append(f"unexpected {len(extra)}: {', '.join(extra)}")
             if mismatched:
                 problems.append(f"hash mismatch {len(mismatched)}: {', '.join(mismatched)}")
+            if manifest_problem:
+                problems.append(manifest_problem)
             if problems:
                 check("T-INT-01", False,
                       f"source identity vs {commit[:7]} — " + "; ".join(problems))
             else:
                 check("T-INT-01", True,
-                      f"source identity: {len(expected)} vendored files hash-match "
-                      f"cpp_reference/ at {commit[:7]}, and no other file is present")
+                      f"source identity: all {len(present)} files in Source/StratRules/ "
+                      f"are accounted for at {commit[:7]} — {len(expected)} sources and "
+                      f"{STRATRULES_BUILD_CS} hash-match tracked blobs, and "
+                      f"{STRATRULES_MANIFEST} recomputes byte-for-byte")
 
     # ---- T-INT-04: no engine deps ------------------------------------------- #
     cc = find_compiler()
