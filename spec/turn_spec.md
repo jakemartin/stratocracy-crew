@@ -153,7 +153,9 @@ off, and neither adds a rule the GDD does not have.
 
 Pure state machine; **no RNG anywhere**; no clock; no I/O. `stateDigest` is an
 order-independent, platform-independent digest of the turn state — §4.10's save
-hash is taken from this state alongside the other modules' (row 10, unbuilt).
+hash is taken from this state alongside the other modules' (row 10 part (b),
+built). This digest is not that hash: it is the turn module's own, over the turn
+state alone.
 Must compile with a plain C++17 compiler.
 
 ## Out of scope, by design

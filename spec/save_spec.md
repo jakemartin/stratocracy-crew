@@ -4,7 +4,7 @@ Game: **Stratocracy** — UE5.8 hex turn-based strategy. Headless (§4.1): **zer
 engine dependencies**, pure C++17, deterministic.
 
 This is **§4.7 SPEC STUB "Save & replay"**, §4.11 build-order **row 10**, and it
-is the **last unbuilt row**. §4.11 splits the row into three parts with three
+was, at that build, the **last unbuilt row**. §4.11 splits the row into three parts with three
 dependency sets; **this build is part (a) alone**:
 
 > (a) *Format spec + header/version machinery* — **no deps at all; write it
@@ -45,7 +45,8 @@ each has a reason that is not "we ran out of time":
   or apply a prefix. Part (b).
 - **T-SAVE-06** is the in-editor half of the parity pair, marked **`†`** in
   §4.11 and asserted jointly with `T-INT-02`. No in-editor Automation harness
-  exists, and its subject (the canonical state hash) is unbuilt besides.
+  exists. Its OTHER blocker — the canonical state hash — was removed when part (b)
+  landed and defined it, so the editor pass is now the whole of what it waits on.
 - **T-SAVE-07** needs row 6's self-play logs. Part (c), week 4.
 
 **The consequence is stated, not hidden: row 10's ledger row does NOT flip, and

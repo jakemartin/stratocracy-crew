@@ -183,7 +183,10 @@ MatchResult endTurn(TurnState& s, const BoardSnapshot& b);
 MatchResult resolveAtCap(const BoardSnapshot& b);
 
 // Order-independent, platform-independent digest of the TURN state. §4.10's save
-// hash is taken from this state alongside the other modules' (row 10, unbuilt).
+// hash is taken from this state alongside the other modules' (row 10 part (b), built:
+// `Replay.h::canonicalStateBytes` reads `turnNumber`, `activeSide`, the two per-unit
+// flag sets and `builtThisTurn` from here). This digest is NOT that hash — it is the
+// turn module's own, over the turn state alone.
 std::string stateDigest(const TurnState& s);
 
 } // namespace strat

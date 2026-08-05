@@ -378,23 +378,18 @@ int main() {
 
     // --- what did NOT run ------------------------------------------------------------
     std::printf("\n");
-    std::printf("NOT RUN  T-SAVE-01 round-trip (play N commands -> save -> load -> identical\n");
-    std::printf("         stateHash). Needs the HEADLESS REPLAYER and the canonical state\n");
-    std::printf("         hash, both part (b). Part (a) applies no command and defines no\n");
-    std::printf("         hash, so there is nothing here for it to be about.\n");
-    std::printf("NOT RUN  T-SAVE-02 replay determinism. Same reason, and it composes every\n");
-    std::printf("         §4.7 determinism gate besides -- part (b), closing on row 6.\n");
-    std::printf("NOT RUN  T-SAVE-03 prefix validity. The parser accepts every prefix of the\n");
-    std::printf("         log as a document, which is NOT the invariant: T-SAVE-03 requires\n");
-    std::printf("         each prefix to be a LOADABLE SAVE, and loadable means replayable.\n");
-    std::printf("         Part (b). Do not read the empty-log case above as covering it.\n");
-    std::printf("NOT RUN  T-SAVE-05 no partial load (an illegal command at index k refuses\n");
-    std::printf("         the file whole). ILLEGAL is a rules judgment -- part (a) asks only\n");
-    std::printf("         whether an entry is well FORMED. Part (b).\n");
+    std::printf("NOT RUN HERE  T-SAVE-01, T-SAVE-02, T-SAVE-03 and T-SAVE-05. All four need\n");
+    std::printf("         the HEADLESS REPLAYER and the canonical state hash, which are part\n");
+    std::printf("         (b); part (a) applies no command and defines no hash, so none of\n");
+    std::printf("         them has a subject in THIS suite. They are not outstanding: part\n");
+    std::printf("         (b) has since landed and closes all four in its own runner, which\n");
+    std::printf("         runs beside this one. In particular T-SAVE-03 is still NOT covered\n");
+    std::printf("         by the empty-log case above -- the parser accepting every prefix\n");
+    std::printf("         as a DOCUMENT is not every prefix being a LOADABLE SAVE.\n");
     std::printf("NOT RUN  T-SAVE-06 stateHash stability across the headless and in-engine\n");
     std::printf("         builds. Marked † in §4.11, asserted jointly with T-INT-02, and no\n");
-    std::printf("         in-editor Automation harness exists. Its subject -- §4.10's\n");
-    std::printf("         canonical state hash -- is unbuilt besides.\n");
+    std::printf("         in-editor Automation harness exists. Its OTHER blocker -- the\n");
+    std::printf("         canonical state hash being unbuilt -- was removed by part (b).\n");
     std::printf("NOT RUN  T-SAVE-07 harness compatibility (a Balance Analyst self-play log\n");
     std::printf("         validates and replays as a save). Needs row 6's self-play output.\n");
     std::printf("         Part (c), week 4.\n");

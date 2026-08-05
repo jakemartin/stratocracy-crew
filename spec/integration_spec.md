@@ -188,9 +188,11 @@ would put a green T-INT-01 beside a vendoring that never happened.
   compile instead.
 - **No bridge exists.** No load mapping, no command submission, no event list, no
   actor and no widget. §4.9 part 2 is unbuilt.
-- **The canonical state hash is unbuilt**, so T-INT-02 and T-INT-03 have no
-  subject even in an editor pass. It belongs to §4.11 **row 10**. The `stateHash`
-  in `Driver.h` is the driver's own debug digest (`GATE-DRV-06`) and is a
-  different thing.
+- **The canonical state hash HAS SINCE BEEN BUILT**, as §4.11 **row 10**'s part
+  (b) — `cpp_reference/Replay.h`, where §4.10 defines it. T-INT-02 and T-INT-03
+  therefore have a subject; what they still lack is the in-editor Automation
+  harness, which is now the whole of what they wait on. The `stateHash` in
+  `Driver.h` is the driver's own debug digest (`GATE-DRV-06`) and is a
+  different thing from both.
 - **No acceptance ID is minted**, and none of §4.5's counts moves on the build
   alone.

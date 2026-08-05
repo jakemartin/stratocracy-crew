@@ -30,9 +30,10 @@
 //
 // See spec/save_spec.md. THE SUITE IS DELIBERATELY PARTIAL: six of row 10's seven
 // acceptance IDs do not run here and test_save.cpp names each with its reason.
-// T-SAVE-01/02/03/05 need the replayer; T-SAVE-06 is in-editor (†) and its subject is
-// unbuilt; T-SAVE-07 needs row 6's self-play logs. Row 10 is a PROPOSED ledger row and
-// has none to flip.
+// T-SAVE-01/02/03/05 need the replayer, which has SINCE LANDED as part (b) and closes
+// all four in `test_replay.cpp`; T-SAVE-06 is in-editor (†) and now waits on the editor
+// pass alone, its other blocker having been the hash part (b) defines; T-SAVE-07 needs
+// row 6's self-play logs. Row 10 is a PROPOSED ledger row and has none to flip.
 //
 // EIGHT STATED READINGS live in spec/save_spec.md rather than here, because this time
 // the spec is the shorter document. The two that change what this header declares:
