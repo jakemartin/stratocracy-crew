@@ -30,9 +30,10 @@ IMPL = "Combat.cpp"          # the file the Systems Engineer authors
 ACCEPT = "acceptance.json"   # the release record — ONLY the Test Engineer writes this
 
 # --------------------------------------------------------------------------- #
-# Week 1 — GDD §4.11 rows 1-3, the three rows §4.4 week 1 owes, plus rows 4, 5, 6 and
-# 7. Rows 4-6 are on the critical path `1 -> 3 -> 4 -> 5 -> 6/8`; row 7 is NOT, and is
-# built here because row 8 queues behind it and its dependencies (rows 1-3) all landed.
+# Week 1 — GDD §4.11 rows 1-3, the three rows §4.4 week 1 owes, plus rows 4, 5, 6, 7
+# and 8. Rows 4-6 and 8 are on the critical path `1 -> 3 -> 4 -> 5 -> 6/8`; row 7 is
+# NOT, and is built here because row 8 queues behind it and its dependencies (rows 1-3)
+# all landed.
 #
 # Same shape as Combat: Director-owned headers and test harnesses are FIXED (copied
 # from cpp_reference/), the implementation is authored into build/, and the gate is a
@@ -40,9 +41,10 @@ ACCEPT = "acceptance.json"   # the release record — ONLY the Test Engineer wri
 # ledger row rather than to "week 1".
 # --------------------------------------------------------------------------- #
 WEEK1_FIXED = ("Hex.h", "Data.h", "Move.h", "Economy.h", "Turn.h", "Ai.h", "Scenario.h",
-               "Driver.h",
+               "Ui.h", "Driver.h",
                "test_hex.cpp", "test_data.cpp", "test_move.cpp", "test_economy.cpp",
-               "test_turn.cpp", "test_ai.cpp", "test_scenario.cpp", "test_driver.cpp",
+               "test_turn.cpp", "test_ai.cpp", "test_scenario.cpp", "test_ui.cpp",
+               "test_driver.cpp",
                "driver_main.cpp")
 
 WEEK1_ROWS = {
@@ -78,8 +80,11 @@ WEEK1_ROWS = {
     "ai": {
         "row": 6, "system": "Opponent AI (baseline)", "spec": "spec/ai_spec.md",
         "impl": "Ai.cpp",
-        "sources": ["Ai.cpp", "Driver.cpp", "Scenario.cpp", "Turn.cpp", "Economy.cpp",
-                    "Move.cpp", "Hex.cpp", "Data.cpp", "Combat.cpp", "test_ai.cpp"],
+        # Driver.cpp is linked here (row 6's gate drives the AI through `execute`), and
+        # Driver.h has included Ui.h since row 8 landed — so Ui.cpp links here too.
+        "sources": ["Ai.cpp", "Driver.cpp", "Ui.cpp", "Scenario.cpp", "Turn.cpp",
+                    "Economy.cpp", "Move.cpp", "Hex.cpp", "Data.cpp", "Combat.cpp",
+                    "test_ai.cpp"],
         "stem": "test_ai_runner", "tests": "T-AI-01..06 + GATE-AI-SMOKE",
     },
     "scenario": {
@@ -94,26 +99,40 @@ WEEK1_ROWS = {
         # branch and T-SCN-11 (c) have no fixture. The runner names each one.
         "tests": "T-SCN-01..07, 08 (c), 09 refusal, 11 (a)(b) + GATE-SCN-PARSE/HASH",
     },
+    "ui": {
+        "row": 8, "system": "UI binding contract", "spec": "spec/ui_spec.md",
+        "impl": "Ui.cpp",
+        # Ui.h includes Scenario.h — isGuidedMarked reads the guidedOpening seat — so
+        # the scenario module links here even though row 8 asserts nothing about it.
+        "sources": ["Ui.cpp", "Scenario.cpp", "Turn.cpp", "Economy.cpp", "Move.cpp",
+                    "Hex.cpp", "Data.cpp", "Combat.cpp", "test_ui.cpp"],
+        "stem": "test_ui_runner",
+        # The acceptance set §4.7 Stub 8 writes is T-UI-01..05. This suite closes a
+        # SUBSET of it: T-UI-03 and T-UI-04 are in-editor Unreal Automation, marked †
+        # in §4.11, and no editor pass exists. The runner names both before its tally.
+        "tests": "T-UI-01, 02, 05 + GATE-CAP-PARTIAL",
+    },
     # Not a §4.7 stub and not a ledger row: the debug-command driver builds no rules
     # system, so its checks are named GATE-DRV-* rather than T-* and move no count in
     # the GDD. It closes §4.4 week 1's OTHER promise, "Playable via debug commands".
     "driver": {
         "row": None, "system": "Debug-command driver", "spec": "spec/driver_spec.md",
         "impl": "Driver.cpp",
-        "sources": ["Driver.cpp", "Ai.cpp", "Scenario.cpp", "Move.cpp", "Hex.cpp",
-                    "Data.cpp", "Economy.cpp", "Turn.cpp", "Combat.cpp",
+        "sources": ["Driver.cpp", "Ai.cpp", "Ui.cpp", "Scenario.cpp", "Move.cpp",
+                    "Hex.cpp", "Data.cpp", "Economy.cpp", "Turn.cpp", "Combat.cpp",
                     "test_driver.cpp"],
-        "stem": "test_driver_runner", "tests": "GATE-DRV-01..11",
+        "stem": "test_driver_runner", "tests": "GATE-DRV-01..12",
     },
 }
 # §4.11 dependency order; the driver is last because it delegates to every row above it.
-WEEK1_ORDER = ("hex", "data", "move", "fame", "turn", "ai", "scenario", "driver")
+WEEK1_ORDER = ("hex", "data", "move", "fame", "turn", "ai", "scenario", "ui", "driver")
 WEEK1_ACCEPT = "acceptance_week1.json"  # the week-1 release record — Test Engineer only
 
 # The playable artifact itself — built from the same sources plus the REPL entry point.
 DRIVER_BINARY = "stratocracy_debug"
-DRIVER_SOURCES = ["Driver.cpp", "Ai.cpp", "Scenario.cpp", "Move.cpp", "Hex.cpp",
-                  "Data.cpp", "Economy.cpp", "Turn.cpp", "Combat.cpp", "driver_main.cpp"]
+DRIVER_SOURCES = ["Driver.cpp", "Ai.cpp", "Ui.cpp", "Scenario.cpp", "Move.cpp",
+                  "Hex.cpp", "Data.cpp", "Economy.cpp", "Turn.cpp", "Combat.cpp",
+                  "driver_main.cpp"]
 
 
 # --------------------------------------------------------------------------- #
@@ -286,8 +305,9 @@ def run_week1_gate_fn() -> dict:
             "summary": ("WEEK-1 GATE PASS — rows 1-3 (T-HEX-01..07, T-DATA-01..04+06, "
                         "T-MOVE-01..06) + row 4 (T-FAME-01..09) + row 5 "
                         "(T-TURN-01..10) + row 6 (T-AI-01..06 + GATE-AI-SMOKE) + "
-                        "row 7's SUBSET of T-SCN (see the row's not-covered list) + "
-                        "the debug driver (GATE-DRV-01..11)" if passed else
+                        "row 7's SUBSET of T-SCN and row 8's SUBSET of T-UI (see each "
+                        "row's not-covered list) + the debug driver "
+                        "(GATE-DRV-01..12)" if passed else
                         "WEEK-1 GATE BLOCK — " + "; ".join(
                             f"{r['system']}: {', '.join(r['failures']) or 'compile/run error'}"
                             for r in rows if not r["passed"]))}
@@ -315,7 +335,7 @@ def build_driver_fn() -> dict:
 
 
 def certify_week1_fn() -> dict:
-    """Test Engineer's release gate for §4.11 rows 1-7 — runs every invariant AND
+    """Test Engineer's release gate for §4.11 rows 1-8 — runs every invariant AND
     writes build/acceptance_week1.json. The ONLY writer of that record.
 
     The record states what it does NOT cover as well as what it does: T-DATA-05 is the
@@ -326,13 +346,16 @@ def certify_week1_fn() -> dict:
     Row 7 is in the same posture for a different reason. The Director's scope ruling
     authors no scenario file for the two stretch maps, so four of §4.7 Stub 7's
     fixtures have nothing to run against; the row records a partial pass and stays
-    pending. Both lists are in `not_covered` by name and with a reason.
+    pending. Row 8 is in row 2's posture exactly: T-UI-03 and T-UI-04 are in-editor
+    Automation over widget bindings, marked † in §4.11, and no editor pass exists.
+    Every list is in `not_covered` by name and with a reason.
     """
     r = run_week1_gate_fn()
     record = {
         "accepted": bool(r["passed"]),
-        "scope": "GDD §4.11 rows 1-7 (§4.4 week 1's rows 1-3, plus rows 4-7 early). "
-                 "Row 7 closes a SUBSET of its acceptance set; see not_covered.",
+        "scope": "GDD §4.11 rows 1-8 (§4.4 week 1's rows 1-3, plus rows 4-8 early). "
+                 "Rows 7 and 8 each close a SUBSET of their acceptance set, and row "
+                 "2's headless half is green while T-DATA-05 is not; see not_covered.",
         "rows": [
             {
                 "row": row["row"],
@@ -359,9 +382,14 @@ def certify_week1_fn() -> dict:
             "there fails under the Bridge-free reading.",
             "T-SCN-10 — reserved and UNWRITTEN on Q26 (ruled). Nothing is asserted, so "
             "nothing is waiting — a different state from T-MOVE-07, which IS blocked.",
-            "GATE-DRV-01..11, GATE-SCN-PARSE and GATE-SCN-HASH gate a tool and a file "
-            "format, not a rules system. They are not §4.7 stub IDs, flip no §3 ledger "
-            "row, and are not GDD acceptance IDs.",
+            "T-UI-03 and T-UI-04 — in-editor Unreal Automation over widget bindings. "
+            "§4.11 marks both †; they are not headless and did not run. They are now "
+            "the WHOLE of what row 8 lacks, so its flip waits on the editor pass "
+            "alone — row 2's posture, for the same reason.",
+            "GATE-DRV-01..12, GATE-SCN-PARSE, GATE-SCN-HASH, GATE-AI-SMOKE and "
+            "GATE-CAP-PARTIAL gate a tool, a file format, a smoke path and a "
+            "partial-capture reading — not a rules system apiece. They are not §4.7 "
+            "stub IDs, flip no §3 ledger row, and are not GDD acceptance IDs.",
         ],
         "summary": r["summary"],
         "certified_by": "Test Engineer",
@@ -443,18 +471,19 @@ try:
 
     @tool("run_week1_gate")
     def run_week1_gate() -> str:
-        """Compile and run the acceptance suites for GDD §4.11 rows 1-7 (hex grid &
+        """Compile and run the acceptance suites for GDD §4.11 rows 1-8 (hex grid &
         math, data tables, movement & pathfinding, capture & Fame economy, turn loop
-        & win/tiebreak, opponent AI, scenario file & validator) plus the debug-command
-        driver. Returns PASS only if T-HEX-01..07, T-DATA-01..04+06, T-MOVE-01..06,
-        T-FAME-01..09, T-TURN-01..10, T-AI-01..06 and row 7's SUBSET of T-SCN all
-        hold, and names the failing IDs per row otherwise. Takes no arguments."""
+        & win/tiebreak, opponent AI, scenario file & validator, UI binding contract)
+        plus the debug-command driver. Returns PASS only if T-HEX-01..07,
+        T-DATA-01..04+06, T-MOVE-01..06, T-FAME-01..09, T-TURN-01..10, T-AI-01..06,
+        row 7's SUBSET of T-SCN and row 8's SUBSET of T-UI all hold, and names the
+        failing IDs per row otherwise. Takes no arguments."""
         r = run_week1_gate_fn()
         return r["summary"] + "\n\n" + "\n\n".join(row["log"] for row in r["rows"])
 
     @tool("certify_week1")
     def certify_week1() -> str:
-        """Run the full week-1 invariant gate (§4.11 rows 1-7) AND write its acceptance
+        """Run the full week-1 invariant gate (§4.11 rows 1-8) AND write its acceptance
         record to build/acceptance_week1.json. The record also states what it does not
         cover — T-DATA-05 is in-editor, T-MOVE-07 is unwritten on Q2, and four of row
         7's fixtures have no map to run against. Certify only a fully passing build.

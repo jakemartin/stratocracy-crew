@@ -53,7 +53,7 @@ The type-effectiveness hook ships **neutral** (`effectiveness()` returns 1.0 for
 and the pre-existing combat numbers stay byte-identical. The offline run demonstrates it end to end:
 **pass 1 blocks on T-COMBAT-07 + T-REPAIR-03, pass 2 passes 17/17.**
 
-## §4.11 rows 1-7 (added after the Assignment-3 submission)
+## §4.11 rows 1-8 (added after the Assignment-3 submission)
 
 The Combat module above is one row of the GDD's §3 provenance ledger. **§4.4 week 1
 owes three more** — §4.11 rows 1-3 — and they are built here, through the same
@@ -441,7 +441,7 @@ file and a real view model, not the game.
 # Offline — no API key, no install; needs only a C++ compiler. Always runs.
 python run.py --offline
 
-# Just the built rows (§4.11 rows 1-7) + the debug driver, skipping the combat crew:
+# Just the built rows (§4.11 rows 1-8) + the debug driver, skipping the combat crew:
 python run.py --week1
 
 # Then play it — the artifact §4.4 week 1 asks for:
@@ -509,10 +509,10 @@ provenance should cite the `cpp_reference/` path, which resolves in the tree.
 
 - `Combat.cpp` — the authored, gate-passing implementation
 - `Hex.cpp`, `Data.cpp`, `Move.cpp`, `Economy.cpp`, `Turn.cpp`, `Ai.cpp`,
-  `Scenario.cpp` — the rules modules (§4.11 rows 1-7)
+  `Scenario.cpp`, `Ui.cpp` — the rules modules (§4.11 rows 1-8)
 - `Driver.cpp` + `stratocracy_debug` — the debug-command REPL, week 1's playable artifact
 - `acceptance.json` — the Combat release record (Test Engineer only)
-- `acceptance_week1.json` — the rows 1-7 release record, including what it does **not**
+- `acceptance_week1.json` — the rows 1-8 release record, including what it does **not**
   cover (T-DATA-05, T-MOVE-07, and four of row 7's fixtures) so a green run cannot
   imply full coverage
 - `run_log.md` — full spec → gate → balance transcript (incl. both caught hallucinations)

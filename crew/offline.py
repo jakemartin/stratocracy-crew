@@ -79,9 +79,9 @@ def run_offline(log) -> dict:
 
 
 def run_week1(log) -> dict:
-    """The same spec -> gate -> certify flow for GDD §4.11 rows 1-7 (§4.4 week 1,
-    plus rows 4, 5, 6 and 7, which week 1 does not owe: rows 4-6 are the critical
-    path, and row 7 is not on it but row 8 queues behind it).
+    """The same spec -> gate -> certify flow for GDD §4.11 rows 1-8 (§4.4 week 1,
+    plus rows 4, 5, 6, 7 and 8, which week 1 does not owe: rows 4-6 and 8 are the
+    critical path, and row 7 is not on it but row 8 queues behind it).
 
     Rows 1 and 2 are authored and gated first because row 3 depends on both (§4.11's
     Depends-on column). Row 3 then repeats the Combat demonstration with the movement
@@ -90,7 +90,7 @@ def run_week1(log) -> dict:
     it promises "the real move set, not an estimate".
     """
     log("\n" + "=" * 78)
-    log("WEEK 1 — GDD §4.11 rows 1-7 + the debug-command driver")
+    log("WEEK 1 — GDD §4.11 rows 1-8 + the debug-command driver")
     log("=" * 78 + "\n")
 
     # Combat is a PREREQUISITE, not a work item (§4.11: "green at 5ffa8d6 and are
@@ -243,12 +243,15 @@ def run_week1(log) -> dict:
     # through it, so `execute` must exist before the row-6 suite can run. The driver's
     # gate still runs below, on the same file.
     log(tools.write_module_impl_fn("scenario", tools.read_reference("Scenario.good.cpp")))
+    log(tools.write_module_impl_fn("ui", tools.read_reference("Ui.good.cpp")))
     log(tools.write_module_impl_fn("driver", tools.read_reference("Driver.good.cpp")))
     log("[Director] Driver placed as a prerequisite of row 6's gate — the AI's commands "
         "are validated by the same 'execute' a typed command goes through, so T-AI-01 "
         "is structural rather than asserted. The driver reaches the scenario module, so "
         "row 7's implementation is placed with it; row 7's OWN gate runs below, on the "
-        "same file, and re-authors it twice.\n")
+        "same file, and re-authors it twice. Since row 8 landed the driver also renders "
+        "the view model, so row 8's implementation is placed here too, on the same "
+        "terms — its OWN gate runs below and re-authors it twice.\n")
 
     log("[Director -> Systems Engineer] spec/ai_spec.md handed over (row 6 — Opponent "
         "AI). This is the SHIPPING opponent: §2.9's difficulty is a starting-Fame "
@@ -322,6 +325,48 @@ def run_week1(log) -> dict:
         log("[stop] row 7 pass 2 did not pass — see the failures above.")
         return {"status": "error", "gate_passed": False,
                 "failures_caught": s1.get("failures", [])}
+
+    # --- row 8: on the critical path, and a partial pass like row 7 --------------
+    log("\n[Director -> Systems Engineer] spec/ui_spec.md handed over (row 8 — UI "
+        "binding contract). It owns how a widget is FED, not what a widget looks like, "
+        "which is §2.11's lane. Like row 7 it records a PARTIAL PASS: T-UI-03 and "
+        "T-UI-04 are in-editor Unreal Automation, marked † in §4.11, and no editor pass "
+        "exists — so the ledger row does not flip and the runner names both by name.")
+    log(tools.write_module_impl_fn("ui", tools.read_reference("Ui.buggy.cpp")))
+    log("[Systems Engineer] pass 1 authored — five readings the spec names in advance: "
+        "the highlight recomputed as a hex-distance filter; partial credit toward "
+        "objectivesHeld for a capture in progress; incomePerTurn read from "
+        "accrueIncome, which pays 0 on turn 1; isGuidedMarked keyed on the unit's "
+        "current hex; and spawnBlocked set equal to buildWaiting.\n")
+
+    u1 = tools.run_row_gate_fn("ui")
+    log("[Systems Engineer · self-test] " + u1["summary"])
+    for line in u1["log"].splitlines():
+        log("    " + line)
+    if u1["passed"]:
+        log("[note] pass 1 unexpectedly passed — the bundled 'buggy' UI module should "
+            "fail T-UI-02, T-UI-05 and GATE-CAP-PARTIAL; continuing anyway.\n")
+    else:
+        log(f"\n[Systems Engineer · self-test] BLOCK — {', '.join(sorted(set(u1['failures'])))} "
+            "caught it. Q14 refuses partial credit — a capture in progress counts for "
+            "nobody until the objective flips; Q8(a) pays no income on turn 1 while "
+            "ruling G makes incomePerTurn the STANDING rate, so the two differ exactly "
+            "where a wrong read is invisible; isGuidedMarked is a property of the "
+            "placement, not of where the unit stands now; and buildWaiting is the "
+            "queued-slot fact, which cannot express a boxed-in factory with nothing "
+            "queued. Fixing before hand-off.\n")
+
+    log("[Systems Engineer] re-fed Q14, Q8(a) with ruling G, and rulings E and J; "
+        "recomputing each DECLARED DERIVED field from the stub's words.")
+    log(tools.write_module_impl_fn("ui", tools.read_reference("Ui.good.cpp")))
+    u2 = tools.run_row_gate_fn("ui")
+    log("[Systems Engineer · self-test] " + u2["summary"])
+    for line in u2["log"].splitlines():
+        log("    " + line)
+    if not u2["passed"]:
+        log("[stop] row 8 pass 2 did not pass — see the failures above.")
+        return {"status": "error", "gate_passed": False,
+                "failures_caught": u1.get("failures", [])}
 
     # --- the debug-command driver: week 1's OTHER promise ------------------------
     log("\n[Director -> Systems Engineer] spec/driver_spec.md handed over. §4.4 week 1 "
