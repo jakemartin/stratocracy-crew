@@ -529,6 +529,9 @@ STRATRULES_BUILD_CS = "StratRules.Build.cs"
 # rather than an assertion about it.
 STRATRULES_MODULE_PREFIX = "ue_module/"
 STRATRULES_MANIFEST_FIELDS = "manifest_fields.json"
+# The vendored set, declared rather than inferred from a glob of cpp_reference/.
+# It must partition the crew's modules — see the comment at its use below.
+STRATRULES_VENDORED_SET = "vendored_set.json"
 
 
 def find_ue_project(explicit: str | None = None) -> Path | None:
@@ -614,11 +617,55 @@ def run_integration_gate_fn(ue_path: str | None = None) -> dict:
                   "repo — the recorded source cannot be produced")
         else:
             ok_tree, tree = _git_out(["ls-tree", "--name-only", f"{commit}:cpp_reference"])
-            expected = sorted(
-                n for n in tree.decode("utf-8", "replace").split()
-                if n.endswith(".h") or n.endswith(".good.cpp"))
-            # Every file in the directory is now accounted for: the 20 sources and the
-            # UBT wrapper hash-match tracked blobs; the manifest is REBUILT here and
+            crew_names = set(tree.decode("utf-8", "replace").split())
+            # A crew MODULE is an X with both cpp_reference/X.h and X.good.cpp. That
+            # set is not the vendored set and has not been since Save landed at
+            # 737f666: §4.9 vendors ten modules and names three the Director ruled out.
+            # Deriving `expected` by globbing cpp_reference/ conflated the two, so any
+            # rulesCommit at or after 737f666 demanded the excluded three be vendored
+            # and rulesCommit could not be advanced at all. The vendored set is now
+            # DECLARED, in a blob tracked under ue_module/ and read here from the
+            # object store — never imported from sync_stratrules.py, on the same terms
+            # as manifest_fields.json below.
+            crew_modules = {n[:-2] for n in crew_names
+                            if n.endswith(".h") and f"{n[:-2]}.good.cpp" in crew_names}
+            vendored: list[str] = []
+            set_problem = None
+            ok_set, sblob = _git_out(
+                ["show", f"{commit}:{STRATRULES_MODULE_PREFIX}{STRATRULES_VENDORED_SET}"])
+            if not ok_set:
+                set_problem = (f"no {STRATRULES_MODULE_PREFIX}{STRATRULES_VENDORED_SET} "
+                               f"at {commit[:7]} — the vendored set is undeclared")
+            else:
+                try:
+                    decl = json.loads(sblob.decode("utf-8"))
+                    vendored = sorted(decl["vendored"])
+                    excluded = sorted(decl["excluded"])
+                    # The declaration must PARTITION the crew's modules. A module in
+                    # neither list is the case that matters: it is how a new crew module
+                    # gets vendored by accident, or forgotten in silence. The old glob
+                    # bought exactly this property and it is kept rather than dropped.
+                    both = sorted(set(vendored) & set(excluded))
+                    unaccounted = sorted(crew_modules - set(vendored) - set(excluded))
+                    phantom = sorted((set(vendored) | set(excluded)) - crew_modules)
+                    if both:
+                        set_problem = ("declared both vendored and excluded: "
+                                       + ", ".join(both))
+                    elif unaccounted:
+                        set_problem = (
+                            f"{len(unaccounted)} crew module(s) in neither the vendored "
+                            f"nor the excluded list at {commit[:7]}: "
+                            + ", ".join(unaccounted))
+                    elif phantom:
+                        set_problem = ("declared module(s) with no cpp_reference source "
+                                       f"at {commit[:7]}: " + ", ".join(phantom))
+                except Exception as exc:
+                    set_problem = f"{STRATRULES_VENDORED_SET} unreadable: {exc}"
+
+            expected = sorted(f"{m}{suf}" for m in vendored
+                              for suf in (".h", ".good.cpp"))
+            # Every file in the directory is now accounted for: the vendored sources and
+            # the UBT wrapper hash-match tracked blobs; the manifest is REBUILT here and
             # compared byte-for-byte. Nothing is exempt.
             hashed = {n: f"cpp_reference/{n}" for n in expected}
             hashed[STRATRULES_BUILD_CS] = (
@@ -690,6 +737,11 @@ def run_integration_gate_fn(ue_path: str | None = None) -> dict:
                 problems.append(f"hash mismatch {len(mismatched)}: {', '.join(mismatched)}")
             if manifest_problem:
                 problems.append(manifest_problem)
+            if set_problem:
+                # An unreadable or non-partitioning declaration makes every other arm
+                # meaningless — `expected` is derived FROM it — so report the cause
+                # alone rather than burying it under the consequences it produced.
+                problems = [set_problem]
             if problems:
                 check("T-INT-01", False,
                       f"source identity vs {commit[:7]} — " + "; ".join(problems))
@@ -697,8 +749,11 @@ def run_integration_gate_fn(ue_path: str | None = None) -> dict:
                 check("T-INT-01", True,
                       f"source identity: all {len(present)} files in Source/StratRules/ "
                       f"are accounted for at {commit[:7]} — {len(expected)} sources and "
-                      f"{STRATRULES_BUILD_CS} hash-match tracked blobs, and "
-                      f"{STRATRULES_MANIFEST} recomputes byte-for-byte")
+                      f"{STRATRULES_BUILD_CS} hash-match tracked blobs, "
+                      f"{STRATRULES_MANIFEST} recomputes byte-for-byte, and the declared "
+                      f"vendored set partitions the {len(crew_modules)} crew modules "
+                      f"({len(vendored)} vendored, {len(crew_modules) - len(vendored)} "
+                      "ruled out)")
 
     # ---- T-INT-04: no engine deps ------------------------------------------- #
     cc = find_compiler()

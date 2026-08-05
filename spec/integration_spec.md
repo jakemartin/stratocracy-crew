@@ -181,35 +181,40 @@ would put a green T-INT-01 beside a vendoring that never happened.
 
 ## What this row does NOT do, stated so it is not inferred
 
-- **The module is still not wired into a build target.** At `30a73f0`
-  `Stratocracy.uproject` does not list it and no target depends on it, so UBT
-  does not compile it. **In-engine compilation is what the editor pass gates,
-  and T-INT-04 deliberately asserts the standalone compile instead**, so a green
-  UBT build would move no acceptance ID and would not be evidence for one.
-- **The UBT compile has been measured, out of tree, and it needs the Build.cs
-  line this commit adds.** Registering the module and building `StratocracyEditor`
-  fails on one diagnostic: both targets set `BuildSettingsVersion.V7`, and V2
-  onward raises `ShadowVariableWarningLevel` to `Error`, so `Driver.good.cpp`'s
-  shadowed local `r` stops the build as `error C4456`. The other nine modules
-  compile clean. With `CppCompileWarningSettings.ShadowVariableWarningLevel =
-  WarningLevel.Warning` the build succeeds and links `UnrealEditor-StratRules.dll`.
-  Both runs were made with the registration reverted afterwards and nothing
-  committed in the UE repo, so this is a measurement rather than a landing.
-  **UBT compiles these sources as C++20** with MSVC strict conformance
+- **Wiring the module into a build target closes nothing, whenever it happens.**
+  **In-engine compilation is what the editor pass gates, and T-INT-04
+  deliberately asserts the standalone compile instead**, so a green UBT build
+  moves no acceptance ID and is not evidence for one. What it does buy is that
+  the vendored sources are known to compile under the engine's own flags, which
+  was an untested assumption underneath all of §4.9 part 2. Measured: the build
+  **fails** without the `Build.cs` line this commit's wrapper carries — both
+  targets set `BuildSettingsVersion.V7`, and V2 onward raises
+  `ShadowVariableWarningLevel` to `Error`, so `Driver.good.cpp`'s shadowed local
+  `r` stops the build as `error C4456` while the other nine modules compile
+  clean — and **succeeds with it**, linking `UnrealEditor-StratRules.dll`. That
+  line was chosen over editing the certified source, which would have re-dated
+  T-INT-04's closure as well as T-INT-01's, for a warning that diagnoses no
+  defect these gates can observe.
+- **UBT compiles these sources as C++20**, with MSVC strict conformance
   (`BuildSettingsVersion` V4 onward), while the standalone gate compiles them as
-  C++17: the same bytes, two language standards. Filed as a change request
-  against §4.9's "pure C++17" wording; **not** a finding about the sources,
-  which compile clean under both.
-- **The Build.cs line cannot take effect yet, and the reason is a defect in this
-  gate.** It only applies once `Source/StratRules/` is re-vendored, which moves
-  `rulesCommit` — and T-INT-01 derives its expected set by globbing
-  `cpp_reference/` at `rulesCommit`, so any commit at or after `737f666` makes it
-  demand that `Save`, `Replay` and `Balance` be vendored too. Rulings N and R
-  refuse exactly that. **`rulesCommit` has therefore been un-advanceable since
-  `737f666`**, for any reason, and nothing surfaced it because it never moved.
+  C++17: the same bytes under two language standards. Filed as a change request
+  against §4.9's "pure C++17" wording; **not** a finding about the sources, which
+  compile clean under both.
+- **The vendored set is declared, not inferred — and that repaired a defect that
+  had frozen `rulesCommit`.** T-INT-01 used to derive its expected set by
+  globbing `cpp_reference/` at `rulesCommit`, which equated *every crew module*
+  with *every vendored module*. Those coincided only until `Save` landed at
+  `737f666`; from that commit onward the check demanded `Save`, `Replay` and
+  `Balance` be vendored, which Rulings N and R refuse, so **`rulesCommit` could
+  not be advanced for any reason and nothing surfaced it because it never moved.**
   The written invariant quantifies over *"every file in `Source/StratRules/`"*,
-  not over every crew source, so the `missing` arm asserts more than the text
-  does. Filed for a Director ruling; **not** repaired here.
+  not over every crew source, so the check asserted more than the text did and
+  the text needed no amendment (ruled 2026-08-05). The set now lives in
+  `ue_module/vendored_set.json`, read from the object store by both this script's
+  consumer and the check, and it **must partition** the crew's modules: a module
+  in neither `vendored` nor `excluded` fails. That keeps the one property the
+  glob was buying — a new crew module cannot be vendored by accident or forgotten
+  in silence — while letting a ruled exclusion be stated instead of inferred.
 - **No bridge exists.** No load mapping, no command submission, no event list, no
   actor and no widget. §4.9 part 2 is unbuilt.
 - **The canonical state hash HAS SINCE BEEN BUILT**, as §4.11 **row 10**'s part

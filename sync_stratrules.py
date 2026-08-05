@@ -38,15 +38,21 @@ ROOT = Path(__file__).resolve().parent
 # *.buggy.cpp files are the deliberately-wrong pass-1 fixtures the gate blocks on and
 # are not shippable code. Driver is IN the set and is not optional: Ai.good.cpp links
 # against it, which is why §4.11 row 6's gate carries Driver.cpp too.
-MODULES = ("Combat", "Hex", "Data", "Move", "Economy", "Turn", "Ai", "Scenario",
-           "Ui", "Driver")
+#
+# The names are NOT a literal here any more. They live in `ue_module/vendored_set.json`
+# and are read from the object store at the commit being vendored, because T-INT-01
+# needs the same declaration and deriving it by globbing cpp_reference/ silently
+# equated "every crew module" with "every vendored module" — true only until Save
+# landed at 737f666, after which the check demanded the ruled-out modules be vendored
+# and rulesCommit could not be advanced at all.
+def vendored_names(modules: list[str]) -> list[str]:
+    """The crew names, unchanged — `Ui.good.cpp` stays `Ui.good.cpp`.
 
-# Vendored names are the crew names, unchanged — `Ui.good.cpp` stays `Ui.good.cpp`.
-# UBT globs *.cpp, so the suffix costs nothing, and it makes T-INT-01 a path-for-path
-# identity with no rename map for a later reader to get wrong.
-def vendored_names() -> list[str]:
+    UBT globs *.cpp, so the suffix costs nothing, and it makes T-INT-01 a
+    path-for-path identity with no rename map for a later reader to get wrong.
+    """
     names = []
-    for m in MODULES:
+    for m in modules:
         names.append(f"{m}.h")
         names.append(f"{m}.good.cpp")
     return sorted(names)
@@ -62,6 +68,7 @@ def vendored_names() -> list[str]:
 MODULE_PREFIX = "ue_module/"
 BUILD_CS_NAME = "StratRules.Build.cs"
 MANIFEST_FIELDS = "manifest_fields.json"
+VENDORED_SET = "vendored_set.json"
 
 MANIFEST = "StratRules.manifest.json"
 
@@ -111,7 +118,11 @@ def main() -> int:
     dest = ue / "Source" / "StratRules"
     dest.mkdir(parents=True, exist_ok=True)
 
-    names = vendored_names()
+    # The declaration is read from the object store at the commit being vendored, on
+    # the same terms as the wrapper and the manifest fields below.
+    decl = json.loads(
+        git_bytes("show", f"{commit}:{MODULE_PREFIX}{VENDORED_SET}").decode("utf-8"))
+    names = vendored_names(sorted(decl["vendored"]))
     entries = {}
     for name in names:
         blob = git_bytes("show", f"{commit}:cpp_reference/{name}")
