@@ -4,7 +4,7 @@
     python run.py              # live CrewAI crew if ANTHROPIC_API_KEY is set, else offline
     python run.py --offline    # force the deterministic no-API pipeline
     python run.py --online     # force the live crew (errors if no key)
-    python run.py --week1      # §4.11 rows 1-8 + the driver, then row 9's headless half
+    python run.py --week1      # §4.11 rows 1-8 + 10(a) + the driver, then row 9's headless half
     python run.py --integration  # §4.11 row 9 alone: T-INT-01, T-INT-04
 
 Always produces build/run_log.md, build/Combat.cpp, and build/balance_report.md, and
@@ -89,7 +89,7 @@ def run_live() -> None:
 
 
 def run_week1_stage() -> dict:
-    """GDD §4.11 rows 1-8 — the §4.4 week-1 deliverable and the rows built ahead of it.
+    """GDD §4.11 rows 1-8 and row 10 part (a) — the §4.4 week-1 deliverable and the rows built ahead of it.
 
     Deterministic on both paths: the live CrewAI crew in crew/tasks.py is written
     against the Combat spec only, so these three modules are authored from the bundled
@@ -154,7 +154,7 @@ def main() -> int:
         elif week1_only:
             run_week1_stage()
             run_integration_stage()
-            header = "week 1 only (§4.11 rows 1-8) + row 9's headless half"
+            header = "week 1 only (§4.11 rows 1-8 + 10(a)) + row 9's headless half"
         elif force_online or (have_key and not force_offline):
             try:
                 run_live()
@@ -174,8 +174,8 @@ def main() -> int:
         log(f"\nArtifacts in {BUILD}/ : stratrules_obj/, run_log.md")
     elif week1_only:
         log(f"\nArtifacts in {BUILD}/ : Hex.cpp, Data.cpp, Move.cpp, Economy.cpp, "
-            "Turn.cpp, Ai.cpp, Scenario.cpp, Ui.cpp, Driver.cpp, stratocracy_debug, "
-            "acceptance_week1.json, run_log.md")
+            "Turn.cpp, Ai.cpp, Scenario.cpp, Ui.cpp, Save.cpp, Driver.cpp, "
+            "stratocracy_debug, acceptance_week1.json, run_log.md")
     else:
         log(f"\nArtifacts in {BUILD}/ : Combat.cpp, test_combat.cpp, selfplay.cpp, "
             "balance_report.md, acceptance.json, Hex.cpp, Data.cpp, Move.cpp, "

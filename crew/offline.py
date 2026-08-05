@@ -368,6 +368,51 @@ def run_week1(log) -> dict:
         return {"status": "error", "gate_passed": False,
                 "failures_caught": u1.get("failures", [])}
 
+    # --- row 10 part (a): the save format's header machinery ---------------------
+    log("\n[Director -> Systems Engineer] spec/save_spec.md handed over (row 10 — Save "
+        "& replay format). §4.11 splits the row into three parts with three dependency "
+        "sets and THIS IS PART (a) ALONE: the format spec plus the header/version "
+        "machinery, which has no dependencies at all and on which T-SAVE-04 closes by "
+        "itself, 'since it never applies a command'. No command is applied here and "
+        "§4.10's canonical state hash is NOT defined here — that is part (b), and the "
+        "stateHash in Driver.h is the driver's own debug digest (GATE-DRV-06), a "
+        "different thing. Six of the row's seven IDs do not run and the runner names "
+        "each with its reason. Row 10 is a PROPOSED ledger row and has none to flip.")
+    log(tools.write_module_impl_fn("save", tools.read_reference("Save.buggy.cpp")))
+    log("[Systems Engineer] pass 1 authored — three defects the spec names in advance: "
+        "loadSave parses into the CALLER'S object and validates afterwards; checkHeader "
+        "compares only formatVersion and rulesCommit, two of the four fields §4.10's "
+        "Version policy enumerates; and an unknown key is tolerated instead of "
+        "refused.\n")
+
+    s1 = tools.run_row_gate_fn("save")
+    log("[Systems Engineer · self-test] " + s1["summary"])
+    for line in s1["log"].splitlines():
+        log("    " + line)
+    if s1["passed"]:
+        log("[note] pass 1 unexpectedly passed — the bundled 'buggy' save module should "
+            "fail T-SAVE-04 and GATE-SAVE-PARSE; continuing anyway.\n")
+    else:
+        log(f"\n[Systems Engineer · self-test] BLOCK — {', '.join(sorted(set(s1['failures'])))} "
+            "caught it. T-SAVE-04 states THREE things and the pass-1 module satisfies "
+            "only the first: refused, refused WITH A REASON, and the caller's state "
+            "UNTOUCHED. Filling the caller's object before validating is the defect the "
+            "'state untouched' clause exists for, and it is invisible to any fixture "
+            "that only checks the return value. Fixing before hand-off.\n")
+
+    log("[Systems Engineer] re-fed §4.10's Version policy: the refusal set is the four "
+        "fields it enumerates, the parse fills a local and assigns once on success, and "
+        "an unknown key is a refusal because within one formatVersion it is a typo.")
+    log(tools.write_module_impl_fn("save", tools.read_reference("Save.good.cpp")))
+    s2 = tools.run_row_gate_fn("save")
+    log("[Systems Engineer · self-test] " + s2["summary"])
+    for line in s2["log"].splitlines():
+        log("    " + line)
+    if not s2["passed"]:
+        log("[stop] row 10 part (a) pass 2 did not pass — see the failures above.")
+        return {"status": "error", "gate_passed": False,
+                "failures_caught": s1.get("failures", [])}
+
     # --- the debug-command driver: week 1's OTHER promise ------------------------
     log("\n[Director -> Systems Engineer] spec/driver_spec.md handed over. §4.4 week 1 "
         "promises rows 1-3 AND 'Playable via debug commands'; the rows are green and "
@@ -406,7 +451,8 @@ def run_week1(log) -> dict:
         "row 2 stays pending until the in-editor T-DATA-05 pass runs, and row 7 stays "
         "pending because the Director's scope ruling leaves four of its fixtures "
         "without a map. Rows 1, 3, 4, 5 and 6 have no missing half and are complete at "
-        "this commit.")
+        "this commit. Row 10 is a PROPOSED ledger row (§4.11) and has none to flip at "
+        "all — a different state from a partial pass, and not one Q29 speaks to.")
 
     return {"status": "ok", "gate_passed": cert["accepted"],
             "failures_caught": m1.get("failures", [])}

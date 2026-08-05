@@ -42,10 +42,10 @@ ACCEPT = "acceptance.json"   # the release record — ONLY the Test Engineer wri
 # ledger row rather than to "week 1".
 # --------------------------------------------------------------------------- #
 WEEK1_FIXED = ("Hex.h", "Data.h", "Move.h", "Economy.h", "Turn.h", "Ai.h", "Scenario.h",
-               "Ui.h", "Driver.h",
+               "Ui.h", "Save.h", "Driver.h",
                "test_hex.cpp", "test_data.cpp", "test_move.cpp", "test_economy.cpp",
                "test_turn.cpp", "test_ai.cpp", "test_scenario.cpp", "test_ui.cpp",
-               "test_driver.cpp",
+               "test_save.cpp", "test_driver.cpp",
                "driver_main.cpp")
 
 WEEK1_ROWS = {
@@ -113,6 +113,23 @@ WEEK1_ROWS = {
         # in §4.11, and no editor pass exists. The runner names both before its tally.
         "tests": "T-UI-01, 02, 05 + GATE-CAP-PARTIAL",
     },
+    "save": {
+        "row": 10, "system": "Save & replay format, part (a)", "spec": "spec/save_spec.md",
+        "impl": "Save.cpp",
+        # THE LINK SET IS THE CLAIM. §4.11 says row 10 part (a) has "no deps at all",
+        # and this is where that is checked rather than asserted: Hex.cpp for the odd-r
+        # conversion and nothing else. No Scenario.cpp (the scenarioHash is COMPARED,
+        # never recomputed), no Turn/Economy (no command is applied), no Driver.cpp.
+        # Adding a source here without a reason quietly falsifies §4.11's dependency
+        # cell for this row.
+        "sources": ["Save.cpp", "Hex.cpp", "test_save.cpp"],
+        "stem": "test_save_runner",
+        # The acceptance set §4.7's Save stub writes is T-SAVE-01..07. This suite closes
+        # a SUBSET: only part (a) is built, so T-SAVE-04 closes alone. T-SAVE-01/02/03/05
+        # need the replayer (part b), T-SAVE-06 is in-editor (†) with an unbuilt subject,
+        # and T-SAVE-07 needs row 6's self-play (part c). The runner names all six.
+        "tests": "T-SAVE-04 + GATE-SAVE-PARSE",
+    },
     # Not a §4.7 stub and not a ledger row: the debug-command driver builds no rules
     # system, so its checks are named GATE-DRV-* rather than T-* and move no count in
     # the GDD. It closes §4.4 week 1's OTHER promise, "Playable via debug commands".
@@ -126,7 +143,10 @@ WEEK1_ROWS = {
     },
 }
 # §4.11 dependency order; the driver is last because it delegates to every row above it.
-WEEK1_ORDER = ("hex", "data", "move", "fame", "turn", "ai", "scenario", "ui", "driver")
+# `save` is row 10 part (a) and depends on nothing, so its position is free — it sits in
+# ledger-row order, after row 8 and still ahead of the driver.
+WEEK1_ORDER = ("hex", "data", "move", "fame", "turn", "ai", "scenario", "ui", "save",
+               "driver")
 WEEK1_ACCEPT = "acceptance_week1.json"  # the week-1 release record — Test Engineer only
 
 # The playable artifact itself — built from the same sources plus the REPL entry point.
@@ -306,7 +326,8 @@ def run_week1_gate_fn() -> dict:
             "summary": ("WEEK-1 GATE PASS — rows 1-3 (T-HEX-01..07, T-DATA-01..04+06, "
                         "T-MOVE-01..06) + row 4 (T-FAME-01..09) + row 5 "
                         "(T-TURN-01..10) + row 6 (T-AI-01..06 + GATE-AI-SMOKE) + "
-                        "row 7's SUBSET of T-SCN and row 8's SUBSET of T-UI (see each "
+                        "row 7's SUBSET of T-SCN and row 8's SUBSET of T-UI + row 10's "
+                        "part (a) alone (T-SAVE-04 + GATE-SAVE-PARSE) (see each "
                         "row's not-covered list) + the debug driver "
                         "(GATE-DRV-01..12)" if passed else
                         "WEEK-1 GATE BLOCK — " + "; ".join(
@@ -354,9 +375,10 @@ def certify_week1_fn() -> dict:
     r = run_week1_gate_fn()
     record = {
         "accepted": bool(r["passed"]),
-        "scope": "GDD §4.11 rows 1-8 (§4.4 week 1's rows 1-3, plus rows 4-8 early). "
-                 "Rows 7 and 8 each close a SUBSET of their acceptance set, and row "
-                 "2's headless half is green while T-DATA-05 is not; see not_covered.",
+        "scope": "GDD §4.11 rows 1-8 (§4.4 week 1's rows 1-3, plus rows 4-8 early) and "
+                 "row 10 PART (a) only. Rows 7, 8 and 10 each close a SUBSET of their "
+                 "acceptance set, and row 2's headless half is green while T-DATA-05 "
+                 "is not; see not_covered.",
         "rows": [
             {
                 "row": row["row"],
@@ -387,10 +409,28 @@ def certify_week1_fn() -> dict:
             "§4.11 marks both †; they are not headless and did not run. They are now "
             "the WHOLE of what row 8 lacks, so its flip waits on the editor pass "
             "alone — row 2's posture, for the same reason.",
-            "GATE-DRV-01..12, GATE-SCN-PARSE, GATE-SCN-HASH, GATE-AI-SMOKE and "
-            "GATE-CAP-PARTIAL gate a tool, a file format, a smoke path and a "
-            "partial-capture reading — not a rules system apiece. They are not §4.7 "
-            "stub IDs, flip no §3 ledger row, and are not GDD acceptance IDs.",
+            "T-SAVE-01, T-SAVE-02, T-SAVE-03 and T-SAVE-05 — all four need the HEADLESS "
+            "REPLAYER, which is §4.11 row 10's part (b). Part (a) applies no command "
+            "and defines no state hash, so none of the four has a subject here. In "
+            "particular T-SAVE-03 is NOT covered by the empty-log case: the parser "
+            "accepting every prefix as a DOCUMENT is not every prefix being a LOADABLE "
+            "SAVE.",
+            "T-SAVE-06 — stateHash stability across the headless and in-engine builds. "
+            "§4.11 marks it †, it is asserted jointly with T-INT-02, no in-editor "
+            "Automation harness exists, and its subject — §4.10's canonical state hash "
+            "— is unbuilt besides. It is the only † of row 10's seven.",
+            "T-SAVE-07 — harness compatibility (a Balance Analyst self-play log "
+            "validates and replays as a save). Needs row 6's self-play output; part "
+            "(c), §4.4 week 4.",
+            "Row 10's Save module is NOT VENDORED into Source/StratRules/. §4.9 "
+            "enumerates the ten modules the sync script carries and Save is an "
+            "eleventh; it has no bridge consumer until part (b), and re-vendoring "
+            "would re-date T-INT-01's and T-INT-04's closures. Filed for the Director, "
+            "not decided here.",
+            "GATE-DRV-01..12, GATE-SCN-PARSE, GATE-SCN-HASH, GATE-SAVE-PARSE, "
+            "GATE-AI-SMOKE and GATE-CAP-PARTIAL gate a tool, two file formats, a smoke "
+            "path and a partial-capture reading — not a rules system apiece. They are "
+            "not §4.7 stub IDs, flip no §3 ledger row, and are not GDD acceptance IDs.",
         ],
         "summary": r["summary"],
         "certified_by": "Test Engineer",
