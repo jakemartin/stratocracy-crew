@@ -181,11 +181,23 @@ would put a green T-INT-01 beside a vendoring that never happened.
 
 ## What this row does NOT do, stated so it is not inferred
 
-- **The module is not wired into a build target.** `StratRules.Build.cs` defines
-  it; `Stratocracy.uproject` does not list it and no target depends on it, so
-  **UBT never compiles it and no UBT build was run**. In-engine compilation is
-  what the editor pass gates, and T-INT-04 deliberately asserts the standalone
-  compile instead.
+- **The module IS wired into a build target, and that closes nothing.** Until
+  2026-08-05 `Stratocracy.uproject` did not list it and no target depended on it,
+  so UBT never compiled it. It now lists it, and `StratocracyEditor` links
+  `UnrealEditor-StratRules.dll`. **In-engine compilation is what the editor pass
+  gates, and T-INT-04 deliberately asserts the standalone compile instead**, so a
+  green UBT build moves no acceptance ID and is not evidence for one. The first
+  UBT attempt **failed**: both targets set `BuildSettingsVersion.V7`, and V2
+  onward raises `ShadowVariableWarningLevel` to `Error`, so `Driver.good.cpp`'s
+  shadowed local `r` stopped the build as `error C4456`. The other nine modules
+  compiled clean. The fix is one line in `ue_module/StratRules.Build.cs`
+  downgrading that warning for this module only — chosen over editing the
+  certified source, which would have re-dated T-INT-04's closure as well as
+  T-INT-01's. **UBT compiles these sources as C++20** with MSVC strict
+  conformance (`BuildSettingsVersion` V4 onward), while the standalone gate
+  compiles them as C++17: the same bytes, two language standards. That is filed
+  as a change request against §4.9's "pure C++17" wording and is **not** a
+  finding about the sources, which compile clean under both.
 - **No bridge exists.** No load mapping, no command submission, no event list, no
   actor and no widget. §4.9 part 2 is unbuilt.
 - **The canonical state hash HAS SINCE BEEN BUILT**, as §4.11 **row 10**'s part

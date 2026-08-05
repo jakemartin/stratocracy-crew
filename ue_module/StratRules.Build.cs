@@ -10,6 +10,17 @@
 // `Core` is the minimum a UBT module declares. Nothing in Source/StratRules/*.h or
 // *.good.cpp includes it; adding a dependency here would not change that, but it
 // would make the claim harder to check, so the list stays at one.
+//
+// The shadowed-variable line below is what lets UBT compile these sources at all.
+// Both targets set DefaultBuildSettings = BuildSettingsVersion.V7, and V2 onward
+// raises ShadowVariableWarningLevel to Error, so Driver.good.cpp's shadowed local
+// `r` stops the build as error C4456 rather than warning. The sources are certified
+// bytes -- T-INT-01 hash-matches them against the crew commit -- so a fix in the
+// vendored tree is not available, and changing the certified source instead would
+// re-date T-INT-04's closure as well as T-INT-01's, for a warning that diagnoses
+// no defect these gates can observe. The scope is this module only: it relaxes
+// nothing for Source/Stratocracy, and it downgrades the warning rather than
+// silencing it, so the diagnostic still prints on every build.
 
 using UnrealBuildTool;
 
@@ -19,6 +30,7 @@ public class StratRules : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.NoPCHs;
 		bUseUnity = false;
+		CppCompileWarningSettings.ShadowVariableWarningLevel = WarningLevel.Warning;
 
 		PublicDependencyModuleNames.AddRange(new string[] { "Core" });
 		PrivateDependencyModuleNames.AddRange(new string[] { });
