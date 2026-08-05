@@ -9,6 +9,12 @@ the design document stay in lockstep.
 **What the crew produces:** a compiling, test-passing `Combat.cpp`, a passing test suite,
 and a self-play balance report — the exact "game-ready output" the GDD promises for this crew.
 
+**Assignment #3 is the first three sections** — [The crew](#the-crew), [Why the gate is
+real](#why-the-gate-is-real), and [Run it](#run-it). Everything from the "§4.11 rows 1-8"
+heading onward was built *after* submission: capstone work, not assignment scope.
+Evidence of the live crew run, readable without an API key:
+[`evidence/live_run.md`](evidence/live_run.md) and [`crew_evidence.html`](crew_evidence.html).
+
 ---
 
 ## The crew
@@ -34,7 +40,42 @@ self-testing — it keeps the build compiling through the sequential hand-off, b
 certifies for release. That separation (author self-checks; an independent role signs off) is why
 the pipeline has no redundant agent.
 
-See `diagram.mmd` for the architecture (roles, tools, data flow, the fail-loop).
+### Architecture
+
+```mermaid
+flowchart TD
+    D["🎯 Director (human)<br/>spec/combat_spec.md (+ _addendum)"]
+
+    subgraph CREW["CrewAI sequential crew"]
+        SE["🛠 Systems Engineer<br/>authors + self-tests C++"]
+        TE["✅ Test Engineer<br/>certifies the build"]
+        BA["📊 Balance Analyst<br/>self-play + tuning"]
+    end
+
+    IMPL[("build/Combat.cpp")]
+    ACC[("build/acceptance.json<br/>release record")]
+    REPORT[("build/balance_report.md")]
+
+    D -->|"input spec (contract)"| SE
+    SE -->|"write_combat_impl"| IMPL
+    SE -->|"run_test_gate (dev self-test)"| SELF{"17/17 pass?"}
+    SELF -->|"BLOCK — fix & re-author"| SE
+    SELF -->|"compiles + self-tested"| TE
+    IMPL --> TE
+    TE -->|"certify_build<br/>(real compile + run<br/>T-COMBAT-01..10 + T-REPAIR-01..07)"| ACC
+    ACC -->|"required input — balance refuses without it"| BA
+    BA -->|"run_self_play"| REPORT
+    REPORT -->|"tuning proposal"| D
+
+    classDef human fill:#33260c,stroke:#6b4d16,color:#ffe1b0;
+    classDef agent fill:#171b21,stroke:#5aa9ff,color:#e7ecf2;
+    classDef data fill:#12301f,stroke:#1c5b3b,color:#bff0d0;
+    class D human;
+    class SE,TE,BA agent;
+    class IMPL,ACC,REPORT data;
+```
+
+_Source: [`diagram.mmd`](diagram.mmd) — roles, tools, data flow, and the Systems Engineer's fail-loop._
 
 ## Why the gate is real
 
@@ -530,7 +571,9 @@ crew/offline.py          no-API pipeline (also demos the gate catching the hallu
 cpp_reference/           the FIXED sources — headers + test harnesses — and good/buggy impls
 run.py                   entrypoint (live if key, else offline; always produces artifacts)
 build/                   generated: the authored .cpp files, acceptance records, binaries
-diagram.mmd              Mermaid architecture diagram
+diagram.mmd              Mermaid architecture diagram (rendered inline above)
+evidence/live_run.md     transcript of the live CrewAI run — build/ is gitignored
+crew_evidence.html       the same run as a standalone evidence page
 ```
 
 **`build/` is gitignored**, so every implementation's committed home is
