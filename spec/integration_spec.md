@@ -181,20 +181,26 @@ would put a green T-INT-01 beside a vendoring that never happened.
 
 ## What this row does NOT do, stated so it is not inferred
 
-- **Wiring the module into a build target closes nothing, whenever it happens.**
-  **In-engine compilation is what the editor pass gates, and T-INT-04
-  deliberately asserts the standalone compile instead**, so a green UBT build
-  moves no acceptance ID and is not evidence for one. What it does buy is that
-  the vendored sources are known to compile under the engine's own flags, which
-  was an untested assumption underneath all of §4.9 part 2. Measured: the build
-  **fails** without the `Build.cs` line this commit's wrapper carries — both
-  targets set `BuildSettingsVersion.V7`, and V2 onward raises
+- **The module is wired into a build target as of UE `a13626f`, and that closes
+  nothing.** `Stratocracy.uproject` lists it and `StratocracyEditor` links
+  `UnrealEditor-StratRules.dll` — the first time these sources have been compiled
+  by the engine's own toolchain. **In-engine compilation is what the editor pass
+  gates, and T-INT-04 deliberately asserts the standalone compile instead**, so a
+  green UBT build moves no acceptance ID and is not evidence for one. What it
+  buys is that the vendored sources are now known to compile under UE's flags,
+  which was an untested assumption underneath all of §4.9 part 2. The build
+  **failed** without the `Build.cs` line the wrapper now carries — both targets
+  set `BuildSettingsVersion.V7`, and V2 onward raises
   `ShadowVariableWarningLevel` to `Error`, so `Driver.good.cpp`'s shadowed local
-  `r` stops the build as `error C4456` while the other nine modules compile
-  clean — and **succeeds with it**, linking `UnrealEditor-StratRules.dll`. That
-  line was chosen over editing the certified source, which would have re-dated
-  T-INT-04's closure as well as T-INT-01's, for a warning that diagnoses no
-  defect these gates can observe.
+  `r` stopped it as `error C4456` while the other nine modules compiled clean.
+  That line was chosen over editing the certified source, which would have
+  re-dated T-INT-04's closure as well as T-INT-01's, for a warning that diagnoses
+  no defect these gates can observe.
+- **Both `T-INT-01` and `T-INT-04` re-date to `e19605e`.** Advancing
+  `rulesCommit` carries whatever crew source changed in between, and one did:
+  `Turn.h`, at `ec15be6` with row 10 part (b). T-INT-04 compiles the vendored
+  copy, so a changed vendored byte re-dates it too — the Build.cs route bought
+  the certified sources being left alone, not a single-ID re-dating.
 - **UBT compiles these sources as C++20**, with MSVC strict conformance
   (`BuildSettingsVersion` V4 onward), while the standalone gate compiles them as
   C++17: the same bytes under two language standards. Filed as a change request
