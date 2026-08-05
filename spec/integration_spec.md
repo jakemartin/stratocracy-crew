@@ -39,14 +39,20 @@ at one commit, per acceptance ID as well as per row. This is row 2's posture on
 T-DATA-05, row 7's on its stretch-map fixtures and row 8's on T-UI-03/04 — a
 partial pass, recorded as one.
 
-**A discrepancy to carry, not to resolve here.** §4.11's row-9 cell marks
-**T-INT-02 and T-INT-05** with `†`, while the Acceptance line above puts
-**T-INT-02, 03 and 05** in the editor pass. They disagree about **T-INT-03**.
-§4.5 states that §4.11's build-order table *"is authoritative for which side an
-ID is on"*, so the table governs and T-INT-03 is headless — but T-INT-03's
-subject is the state hash, which §4.10 owns and **row 10 has not built**, so it
-could not run here regardless of which side it is on. Filed for the Director; no
-ID moved on it.
+**T-INT-03 is in the editor pass, and the `†` marks are not in conflict with that
+— do not re-derive this wrongly.** §4.11's row-9 cell marks only **T-INT-02 and
+T-INT-05**, which can look like a disagreement with the Acceptance line above.
+It is not one, and the master says so in as many words: *"**T-INT-03 stays
+unmarked on the rule, not on cost:** §4.9 does place it in the editor pass, but
+what it asserts … is the bridge behaviour §4.9 contracts …, and a marked ID may
+not guard a rules invariant."* The dagger tracks **cut-line membership** — what
+stands down if the calendar slips — **not headless-versus-editor**. §4.5's clause
+that the build-order table is authoritative governs which side of the *cut line*
+an ID sits on, which is a different question.
+
+So T-INT-03 does not run here, for the same reason T-INT-02 and T-INT-05 do not.
+Its subject is besides the canonical state hash, which §4.10 owns and **row 10
+has not built**.
 
 ## What gets vendored — derived, not chosen
 
