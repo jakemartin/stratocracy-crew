@@ -158,7 +158,7 @@ Pure over its inputs; no RNG; no clock; no filesystem access except the
 
 ## Acceptance
 
-`GATE-DRV-01..11`. This suite gates a debug tool, not a rules system, and no §3
+`GATE-DRV-01..12`. This suite gates a debug tool, not a rules system, and no §3
 ledger row flips on it. `GATE-DRV-11` covers the row-7 surface: the verdict,
 integers and hash `scenario load` prints are `Scenario.h`'s, the board it installs
 matches the file placement for placement, and a file that does not validate is
