@@ -23,13 +23,26 @@
 // compared two calls to the implementation would agree with any field order,
 // correct or not, and the field order IS the invariant here.
 //
-// THE FIXTURE TABLES ARE BUILT HERE, not loaded from data/. Loading the shipped CSVs
-// would make this suite's verdict depend on row 2's files, and every number the
-// checks below turn on would then be a value nobody in this file chose.
+// THE HAND-BUILT FIXTURE TABLES ARE BUILT HERE, not loaded from data/. Loading the
+// shipped CSVs would make every check that turns on a stat depend on row 2's files,
+// and every number those checks turn on would then be a value nobody in this file
+// chose. Every check from GATE-REPLAY-SETUP through T-SAVE-05 runs on those tables.
+//
+// GATE-REPLAY-FIXTURE IS THE ONE EXCEPTION, and it is an exception on purpose. It
+// asserts over `data/parity_fixture.save`, the committed §4.10 file T-INT-02 replays
+// IN-ENGINE, and the UE side reads `data/units.csv`, `data/terrain.csv` and
+// `data/ferrum_crossing.json` -- the bytes `sync_stratdata.py` vendors. A parity
+// fixture seeded from tables nobody ships would compare two different games, so this
+// one check loads the real files and turns on no number of its own: it asserts a
+// replay succeeds, that a carried digest equals a recomputed one, and that re-emitting
+// reproduces the committed bytes. Both worlds seed through `seedFromScenario`, the
+// only Scenario -> GameState mapping in the project.
 #include "Ai.h"
+#include "Data.h"
 #include "Hex.h"
 #include "Replay.h"
 #include "Save.h"
+#include "Scenario.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -248,7 +261,190 @@ static SaveHeaderExpectation expectationFor(const Save& s) {
     return e;
 }
 
-int main() {
+// ---------------------------------------------------------------------------
+// THE PARITY FIXTURE — data/parity_fixture.save, the subject of T-INT-02.
+//
+// ONE BUILDER, TWO CALLERS. `--emit-fixture` writes what this returns; the
+// GATE-REPLAY-FIXTURE check below rebuilds it and compares bytes. A second builder
+// for the check would compare an emitter against itself and could not see the
+// fixture go stale, which is the only thing that check exists to see.
+//
+// EVERY INPUT IS A SHIPPED FILE. The tables and the scenario are the ones
+// `sync_stratdata.py` vendors into the UE project, and the seed is
+// `seedFromScenario` -- the project's only Scenario -> GameState mapping, so the
+// engine side cannot reach a different starting state by re-deriving one.
+//
+// `firstSide` IS 0 HERE AND MUST BE 0 THERE. Replay.h states that no rule in this
+// project decides it and that a disagreement between the two callers shows up as a
+// hash divergence; that is T-INT-02 doing its job, so the value is written once, in
+// a named constant, rather than defaulted twice.
+// ---------------------------------------------------------------------------
+static const int kParityFirstSide = 0;
+
+// How many turns of row 6's AI the log carries. Bounded so the emitter terminates
+// whatever the AI does, and large enough to cross a turn boundary -- a replay that
+// skips the start-of-turn moment diverges only AFTER the first boundary (Replay.h),
+// so a single-turn log could not catch the defect the fixture exists to catch.
+//
+// 14 IS SLACK, NOT THE LENGTH OF THE MATCH. On the shipped scenario the match ends
+// inside turn 11 -- `turn.running` goes false, tier leaves InProgress and side 0
+// wins -- and the loop below stops there, so the emitted log is 64 commands and 14
+// is never reached. The bound is deliberately above that number rather than equal
+// to it: at a bound equal to the match length, a rule or table change that made the
+// game one turn longer would silently emit a TRUNCATED fixture, and every check
+// below would still pass on it, because they all compare this builder against
+// itself. Slack is what makes truncation impossible rather than merely unlikely.
+//
+// The consequence of playing to the end, and it is the point: the in-engine replay
+// T-INT-02 runs crosses the victory path and the MatchOver transition, not just the
+// mid-match moves. Two command kinds are still unexercised and no constant here can
+// change that -- `AiCommandKind` is {Build, Move, Attack, EndTurn}, so this producer
+// cannot emit a Capture at all, and Build never becomes affordable on this scenario.
+// The command surface T-INT-03 asserts over is reached by submitting commands
+// in-engine, not by replaying this file.
+static const int kParityTurns = 14;
+
+// `rulesCommit` and `dataHash` are §4.10 header strings that Save.h defines as
+// CALLER-SUPPLIED and never recomputes -- no module in this repo computes a digest
+// over the §4.8 CSVs, so neither is derived here and neither is dressed up as a
+// digest. They label the file; `checkHeader` is not what GATE-REPLAY-FIXTURE runs.
+static const char* kParityRulesCommit = "parity-fixture";
+static const char* kParityDataHash    = "parity-fixture";
+
+static bool readWholeFile(const std::string& path, std::string& out) {
+    std::FILE* f = std::fopen(path.c_str(), "rb");
+    if (f == nullptr) return false;
+    out.clear();
+    char buf[4096];
+    std::size_t n = 0;
+    while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0) out.append(buf, n);
+    std::fclose(f);
+    return true;
+}
+
+static bool writeWholeFile(const std::string& path, const std::string& text) {
+    std::FILE* f = std::fopen(path.c_str(), "wb");
+    if (f == nullptr) return false;
+    const std::size_t n = std::fwrite(text.data(), 1, text.size(), f);
+    std::fclose(f);
+    return n == text.size();
+}
+
+// Loads the shipped tables and scenario. `ud`/`td` are the caller's because
+// RulesTables BORROWS them and the borrow must outlive every use.
+static bool loadShipped(const std::string& dataDir, std::vector<UnitDef>& ud,
+                        std::vector<TerrainDef>& td, Scenario& sc, std::string& err) {
+    if (!loadUnits(dataDir + "/units.csv", ud, err)) return false;
+    if (!loadTerrain(dataDir + "/terrain.csv", td, err)) return false;
+    const ScenarioLoadResult r =
+        loadScenario(dataDir + "/ferrum_crossing.json", ud, td, sc);
+    if (!r.ok) { err = r.failedId + ": " + r.reason; return false; }
+    return true;
+}
+
+// Seeds from the shipped scenario, plays `kParityTurns` turns of row 6's AI through
+// the replayer's own `applyCommand`, and returns the §4.10 file describing the state
+// that reaches. Total and deterministic: same bytes in, same bytes out.
+static bool buildParityFixture(const std::vector<UnitDef>& ud,
+                               const std::vector<TerrainDef>& td,
+                               const Scenario& sc, Save& out, std::string& err) {
+    RulesTables t;
+    t.units = &ud;
+    t.terrain = &td;
+
+    GameState g;
+    if (!seedFromScenario(g, sc, t, kParityFirstSide, err)) return false;
+
+    std::vector<SaveCommand> log;
+    for (int i = 0; i < kParityTurns; ++i) {
+        if (!g.turn.running) break;   // the match ended inside the log; stop cleanly
+        appendAiTurn(g, log, t, ud, td, g.turn.activeSide);
+    }
+
+    out = Save();
+    out.formatVersion = kFormatVersion;
+    out.rulesCommit   = kParityRulesCommit;
+    out.dataHash      = kParityDataHash;
+    out.scenarioId    = sc.scenarioId;
+    out.scenarioHash  = scenarioHash(sc);
+    out.seed          = 0;
+    out.commandLog    = log;
+    out.stateHash     = canonicalStateHash(g);
+
+    // DERIVED FROM THE STATE THE LOG REACHES, never hardcoded. The log now plays the
+    // match to its end, so `result` is a live field rather than a constant, and a
+    // literal here would become a false statement about the file the moment the game
+    // got shorter or longer.
+    //
+    // The predicate is the TIER, not `turn.running`, and it is Balance.good.cpp's --
+    // `selfPlaySave` is the other place in this repo that writes this field, and one
+    // spelling of "the match produced a result" is what keeps the two files from
+    // disagreeing. It is also the stricter test: `running` can be false with the tier
+    // still InProgress, and that pairing would render the string "InProgress" into a
+    // field §4.10 reserves for an outcome.
+    if (g.turn.result.tier != ResultTier::InProgress) {
+        out.result    = tierName(g.turn.result.tier);
+        out.hasResult = true;
+    } else {
+        out.result.clear();
+        out.hasResult = false;
+    }
+    return true;
+}
+
+// EMIT MODE. Writes the fixture and prints the facts a reviewer needs to check it by
+// hand: where it went, which scenario it came from, what state hash it carries, what
+// outcome that state records, and how the log breaks down by command kind.
+static int emitFixture(const std::string& dataDir, const std::string& path) {
+    std::vector<UnitDef>    ud;
+    std::vector<TerrainDef> td;
+    Scenario sc;
+    std::string err;
+    if (!loadShipped(dataDir, ud, td, sc, err)) {
+        std::printf("EMIT FAILED  shipped data did not load: %s\n", err.c_str());
+        return 1;
+    }
+    Save fixture;
+    if (!buildParityFixture(ud, td, sc, fixture, err)) {
+        std::printf("EMIT FAILED  %s\n", err.c_str());
+        return 1;
+    }
+    const std::string text = serializeSave(fixture);
+    if (!writeWholeFile(path, text)) {
+        std::printf("EMIT FAILED  could not write %s\n", path.c_str());
+        return 1;
+    }
+    int kinds[5] = {0, 0, 0, 0, 0};
+    for (const SaveCommand& c : fixture.commandLog) ++kinds[static_cast<int>(c.kind)];
+    std::printf("wrote      %s  (%d bytes)\n", path.c_str(),
+                static_cast<int>(text.size()));
+    std::printf("scenario   %s  scenarioHash %s\n", fixture.scenarioId.c_str(),
+                fixture.scenarioHash.c_str());
+    std::printf("stateHash  %s\n", fixture.stateHash.c_str());
+    std::printf("result     %s\n",
+                fixture.hasResult ? fixture.result.c_str() : "null (match still running)");
+    std::printf("log        %d commands over %d AI turns  "
+                "(Move %d, Attack %d, Build %d, Capture %d, EndTurn %d)\n",
+                static_cast<int>(fixture.commandLog.size()), kParityTurns,
+                kinds[0], kinds[1], kinds[2], kinds[3], kinds[4]);
+    return 0;
+}
+
+int main(int argc, char** argv) {
+    // `--data <dir>` names the §4.8 data directory; a bare positional does the same,
+    // which is how the row gate invokes every suite in this repo. `--emit-fixture
+    // <path>` writes the parity fixture and runs no check -- an emitter that also
+    // graded itself would report a tally for a run that asserted nothing.
+    std::string dataDir = "../data";
+    std::string emitPath;
+    for (int i = 1; i < argc; ++i) {
+        const std::string a = argv[i];
+        if (a == "--data" && i + 1 < argc)              dataDir = argv[++i];
+        else if (a == "--emit-fixture" && i + 1 < argc) emitPath = argv[++i];
+        else if (a.rfind("--", 0) != 0)                 dataDir = a;
+    }
+    if (!emitPath.empty()) return emitFixture(dataDir, emitPath);
+
     const std::vector<UnitDef>    ud = fixtureUnits();
     const std::vector<TerrainDef> td = fixtureTerrain();
     RulesTables tables;
@@ -504,14 +700,78 @@ int main() {
               !r2.ok && canonicalStateBytes(target2) == bytesBefore);
     }
 
+    // ---- GATE-REPLAY-FIXTURE: the committed parity fixture is not stale ---------
+    // data/parity_fixture.save is the file T-INT-02 replays IN-ENGINE and compares
+    // against §4.10's canonical state hash. It is COMMITTED BYTES, so it can go
+    // stale the moment a rule, a table row or the scenario changes -- and a stale
+    // fixture makes T-INT-02 compare the engine against a game that no longer
+    // exists. This is the check that refuses to let that happen quietly.
+    //
+    // (d) IS THE ONE THAT CATCHES STALENESS. (b) and (c) are satisfied by any file
+    // whose carried hash matches its own log, including one written before the rule
+    // changed if the change happens not to move that log's final state. Only
+    // re-emitting from the shipped inputs and comparing BYTES fails when the AI, the
+    // seed, the tables or the scenario move.
+    {
+        std::vector<UnitDef>    sud;
+        std::vector<TerrainDef> std_;
+        Scenario                ssc;
+        std::string             ferr;
+        const bool loaded = loadShipped(dataDir, sud, std_, ssc, ferr);
+        check("GATE-REPLAY-FIXTURE (a) the shipped tables and scenario load", loaded);
+
+        std::string text;
+        const std::string fixturePath = dataDir + "/parity_fixture.save";
+        const bool read = readWholeFile(fixturePath, text);
+        check("GATE-REPLAY-FIXTURE (b) the committed fixture is present", read);
+
+        Save fx;
+        const SaveLoadResult pr = read
+            ? parseSave(text, "parity_fixture.save", fx)
+            : SaveLoadResult();
+        check("GATE-REPLAY-FIXTURE (c) it parses as a §4.10 save", pr.ok);
+
+        RulesTables st;
+        st.units = &sud;
+        st.terrain = &std_;
+
+        GameState sg;
+        const bool seeded = loaded &&
+            seedFromScenario(sg, ssc, st, kParityFirstSide, ferr);
+        check("GATE-REPLAY-FIXTURE (d) the scenario seeds a GameState", seeded);
+
+        const ReplayResult rr = (seeded && pr.ok)
+            ? replayLog(sg, fx.commandLog, st)
+            : ReplayResult();
+        check("GATE-REPLAY-FIXTURE (e) its command log replays clean",
+              rr.ok && rr.applied == static_cast<int>(fx.commandLog.size()));
+        check("GATE-REPLAY-FIXTURE (f) the carried stateHash is the one it describes",
+              rr.ok && canonicalStateHash(sg) == fx.stateHash);
+
+        Save rebuilt;
+        const bool rebuiltOk = loaded &&
+            buildParityFixture(sud, std_, ssc, rebuilt, ferr);
+        check("GATE-REPLAY-FIXTURE (g) re-emitting reproduces the committed bytes",
+              rebuiltOk && read && serializeSave(rebuilt) == text);
+    }
+
     // --- what did NOT run ------------------------------------------------------
     std::printf("\n");
     std::printf("NOT RUN  T-SAVE-06 stateHash stability across the headless and in-engine\n");
     std::printf("         builds. §4.11 marks it †, it is asserted JOINTLY with T-INT-02,\n");
-    std::printf("         which replays IN-ENGINE. Its other two blockers are gone:\n");
-    std::printf("         §4.10's canonical state hash is built by this build,\n");
-    std::printf("         and an in-editor Automation harness now EXISTS. What\n");
-    std::printf("         remains is a VENDORED replayer, which a ruling defers.\n");
+    std::printf("         which replays IN-ENGINE. Three of its blockers are gone:\n");
+    std::printf("         §4.10's canonical state hash is built by this build; an\n");
+    std::printf("         in-editor Automation harness EXISTS; and the replayer is no\n");
+    std::printf("         longer unvendored -- Save and Replay were vendored at crew\n");
+    std::printf("         f5fdb69, so the deferring ruling no longer describes the tree.\n");
+    std::printf("         What remains is the IN-ENGINE HALF ITSELF, and it is not a\n");
+    std::printf("         headless artifact: the editor build must replay\n");
+    std::printf("         data/parity_fixture.save through the vendored modules and\n");
+    std::printf("         compare its own canonical state hash against the one that\n");
+    std::printf("         file carries. That runs in the UE project, in the editor\n");
+    std::printf("         pass, where T-SAVE-06 closes jointly with T-INT-02. This\n");
+    std::printf("         build supplies the fixture and the headless hash and keeps\n");
+    std::printf("         them fresh (GATE-REPLAY-FIXTURE); it does not run the ID.\n");
     std::printf("NOT RUN  T-SAVE-07 harness compatibility (a Balance Analyst self-play log\n");
     std::printf("         validates and replays as a save). cpp_reference/selfplay.cpp is a\n");
     std::printf("         combat-only 1v1 duel harness that prints a table and emits no\n");

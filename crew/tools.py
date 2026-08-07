@@ -145,16 +145,25 @@ WEEK1_ROWS = {
         # 7's structural half, and closure on rows 4, 5 and 6. Every one of those is a
         # source below: Move/Hex/Data (1-3), Economy/Turn (4-5), Ai (6, whose commands
         # enter the log so T-AI-06 composes into T-SAVE-02), Save (the format part (a)
-        # defined). Scenario.cpp is NOT here — the replayer takes the board as state
-        # and compares scenarioHash as an opaque string, exactly as part (a) does.
+        # defined).
+        #
+        # Scenario.cpp IS here, and it was not before. The replayer itself still takes
+        # the board as state and still compares scenarioHash as an opaque string --
+        # nothing about part (b)'s dependency cell changed. What changed is the SUITE:
+        # GATE-REPLAY-FIXTURE builds data/parity_fixture.save from the shipped scenario,
+        # so the harness calls loadScenario and scenarioHash, both of which live in
+        # Scenario.cpp. Linking it for the fixture is not the same as the replayer
+        # depending on it, and §4.11's cell for this row is unchanged by this line.
         "sources": ["Replay.cpp", "Save.cpp", "Hex.cpp", "Data.cpp", "Move.cpp",
-                    "Economy.cpp", "Turn.cpp", "Combat.cpp", "Ai.cpp",
+                    "Economy.cpp", "Turn.cpp", "Combat.cpp", "Ai.cpp", "Scenario.cpp",
                     "test_replay.cpp"],
         "stem": "test_replay_runner",
         # Four of the five IDs part (b) RUNS also close here. T-SAVE-06 does not: it is
-        # marked † in §4.11, asserted jointly with T-INT-02, and no in-editor Automation
-        # harness exists. GATE-REPLAY-* mint no acceptance ID, on the GATE-SAVE-PARSE
-        # precedent.
+        # marked † in §4.11 and is asserted JOINTLY with T-INT-02, which replays
+        # in-engine. This suite supplies that joint assertion's headless half -- the
+        # committed fixture and the canonical state hash it carries -- and keeps them
+        # fresh via GATE-REPLAY-FIXTURE; it does not run the ID. GATE-REPLAY-* mint no
+        # acceptance ID, on the GATE-SAVE-PARSE precedent.
         "tests": "T-SAVE-01, 02, 03, 05 + GATE-REPLAY-*",
     },
     "balance": {
