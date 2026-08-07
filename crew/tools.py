@@ -110,7 +110,9 @@ WEEK1_ROWS = {
         "stem": "test_ui_runner",
         # The acceptance set §4.7 Stub 8 writes is T-UI-01..05. This suite closes a
         # SUBSET of it: T-UI-03 and T-UI-04 are in-editor Unreal Automation, marked †
-        # in §4.11, and no editor pass exists. The runner names both before its tally.
+        # in §4.11. An in-editor Automation harness now EXISTS (UE fed8ae9) but runs
+        # T-DATA-05 only; these two still lack the real Stratocracy widgets they assert
+        # over. The runner names both before its tally.
         "tests": "T-UI-01, 02, 05 + GATE-CAP-PARTIAL",
     },
     "save": {
@@ -408,14 +410,17 @@ def certify_week1_fn() -> dict:
 
     The record states what it does NOT cover as well as what it does: T-DATA-05 is the
     in-editor Unreal Automation half of row 2, marked † in §4.11, and no headless run
-    can assert it. Q29 refuses a ledger flip on a partial acceptance set, so row 2's
-    flip waits on the editor pass even when everything here is green.
+    can assert it. It is no longer WAITING, though: it is green in the UE project's
+    Automation suite at fed8ae9, run against the data bytes of this repo's b1ea992 and
+    tied to them by sha256. Row 2's acceptance set is therefore complete, and "not
+    covered here" is a statement about this gate's reach, not about the ID.
 
     Row 7 is in the same posture for a different reason. The Director's scope ruling
     authors no scenario file for the two stretch maps, so four of §4.7 Stub 7's
     fixtures have nothing to run against; the row records a partial pass and stays
-    pending. Row 8 is in row 2's posture exactly: T-UI-03 and T-UI-04 are in-editor
-    Automation over widget bindings, marked † in §4.11, and no editor pass exists.
+    pending. Row 8 held row 2's posture and now holds it alone: T-UI-03 and T-UI-04 are
+    in-editor Automation over widget bindings, marked † in §4.11, and while the harness
+    now exists, the real Stratocracy widgets they assert over do not.
     Every list is in `not_covered` by name and with a reason.
     """
     r = run_week1_gate_fn()
@@ -423,8 +428,9 @@ def certify_week1_fn() -> dict:
         "accepted": bool(r["passed"]),
         "scope": "GDD §4.11 rows 1-8 (§4.4 week 1's rows 1-3, plus rows 4-8 early) and "
                  "row 10 PART (a) only. Rows 7, 8 and 10 each close a SUBSET of their "
-                 "acceptance set, and row 2's headless half is green while T-DATA-05 "
-                 "is not; see not_covered.",
+                 "acceptance set. Row 2's headless half is green here and T-DATA-05 is "
+                 "green in-editor at UE fed8ae9, so that row's set is complete; see "
+                 "not_covered.",
         "rows": [
             {
                 "row": row["row"],
@@ -437,7 +443,10 @@ def certify_week1_fn() -> dict:
         ],
         "not_covered": [
             "T-DATA-05 — in-editor Unreal Automation (DataTable import parity + "
-            "EUnitType mirror). §4.11 marks it †; it is not headless and did not run.",
+            "EUnitType mirror). §4.11 marks it †; it is not headless and did not run "
+            "HERE. It is green in the UE project at fed8ae9, over the data bytes of "
+            "this repo's b1ea992, so it is not outstanding — only out of this gate's "
+            "reach.",
             "T-MOVE-07 — reserved and unwritten, blocked on the Q2 movement-class "
             "ruling (§4.7 Stub 3).",
             "T-SCN-08 fixtures (a) The Causeway and (b) Longwater March — both need a "
@@ -453,13 +462,15 @@ def certify_week1_fn() -> dict:
             "nothing is waiting — a different state from T-MOVE-07, which IS blocked.",
             "T-UI-03 and T-UI-04 — in-editor Unreal Automation over widget bindings. "
             "§4.11 marks both †; they are not headless and did not run. They are now "
-            "the WHOLE of what row 8 lacks, so its flip waits on the editor pass "
-            "alone — row 2's posture, for the same reason.",
+            "the WHOLE of what row 8 lacks. The harness they needed now exists (UE "
+            "fed8ae9); what they still lack are the real Stratocracy widgets they "
+            "assert over. Row 2 no longer shares this posture — its set is complete.",
             "T-SAVE-06 — stateHash stability across the headless and in-engine builds. "
-            "§4.11 marks it †, it is asserted jointly with T-INT-02, and no in-editor "
-            "Automation harness exists. Its OTHER blocker — §4.10's canonical state "
-            "hash being unbuilt — is removed by part (b), so the editor pass is now "
-            "the whole of what it waits on. It is the only † of row 10's seven.",
+            "§4.11 marks it †, and it is asserted jointly with T-INT-02. An in-editor "
+            "Automation harness now exists (UE fed8ae9), and §4.10's canonical state "
+            "hash was built by part (b), so neither is what it waits on any more: "
+            "T-INT-02 replays IN-ENGINE and so needs a VENDORED replayer, which a "
+            "ruling defers. It is the only † of row 10's seven.",
             "Row 10's Save, Replay and Selfplay modules are NOT VENDORED into "
             "Source/StratRules/. "
             "§4.9 enumerates the ten modules the sync script carries and these are an "
@@ -796,8 +807,11 @@ def run_integration_gate_fn(ue_path: str | None = None) -> dict:
     tally = f"{sum(1 for _, ok, _ in results if ok)}/{len(results)} passed"
     lines.append("")
     lines.append("T-INT-02, T-INT-03 and T-INT-05 are the editor pass (§4.9 "
-                 "Acceptance) and DID NOT RUN — no in-editor Automation harness "
-                 "exists. Row 9 cannot flip on this gate alone.")
+                 "Acceptance) and DID NOT RUN. An in-editor Automation harness now "
+                 "EXISTS (UE fed8ae9) and runs T-DATA-05; these three still lack the "
+                 "subjects they assert over — T-INT-02 a vendored replayer, T-INT-03 "
+                 "the command surface, T-INT-05 real Stratocracy widgets. Row 9 cannot "
+                 "flip on this gate alone.")
     lines.append(tally)
     summary = ("INTEGRATION GATE PASS — T-INT-01, T-INT-04" if passed
                else f"INTEGRATION GATE BLOCK — failing: {', '.join(failures)}")
@@ -861,7 +875,7 @@ try:
     def certify_week1() -> str:
         """Run the full week-1 invariant gate (§4.11 rows 1-8) AND write its acceptance
         record to build/acceptance_week1.json. The record also states what it does not
-        cover — T-DATA-05 is in-editor, T-MOVE-07 is unwritten on Q2, and four of row
+        cover — T-DATA-05 is in-editor and green there, T-MOVE-07 is unwritten on Q2, and four of row
         7's fixtures have no map to run against. Certify only a fully passing build.
         Takes no arguments."""
         r = certify_week1_fn()

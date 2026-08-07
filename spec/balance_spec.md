@@ -59,7 +59,8 @@ produce byte-identical logs — which is what makes `T-AI-06` compose into this 
 way it composes into `T-SAVE-02`.
 
 **Acceptance:** `T-SAVE-07`. `T-SAVE-06` does not run here — it is row 10's only `†`, is
-asserted jointly with `T-INT-02`, and no in-editor Automation harness exists.
+asserted jointly with `T-INT-02`. An in-editor Automation harness now exists;
+`T-INT-02` replays in-engine and so needs a **vendored** replayer, deferred by ruling.
 
 ## Stated readings
 

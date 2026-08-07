@@ -543,7 +543,10 @@ def run_week1(log) -> dict:
     for line in cert["record"]["not_covered"]:
         log("[Test Engineer] NOT covered by this record: " + line)
     log("[Test Engineer] Q29 refuses a ledger flip on a partial acceptance set, so "
-        "row 2 stays pending until the in-editor T-DATA-05 pass runs, and row 7 stays "
+        "row 7 stays pending because the Director's scope ruling leaves four of its "
+        "fixtures without a map. Row 2's in-editor T-DATA-05 pass HAS since run, "
+        "green in the UE project at fed8ae9 over this repo's b1ea992 data bytes, so "
+        "its acceptance set is complete. "
         "pending because the Director's scope ruling leaves four of its fixtures "
         "without a map. Rows 1, 3, 4, 5 and 6 have no missing half and are complete at "
         "this commit. Row 10 is a PROPOSED ledger row (§4.11) and has none to flip at "

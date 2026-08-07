@@ -689,9 +689,10 @@ int main(int argc, char** argv) {
     std::printf("NOT RUN  T-UI-03 -- the live standings scoreboard binds 1:1 to snapshot\n");
     std::printf("         fields with no widget-side arithmetic. In-editor Unreal\n");
     std::printf("         Automation over widget bindings (§4.7 Stub 8, Acceptance;\n");
-    std::printf("         marked † in §4.11), and no in-editor pass exists at this\n");
-    std::printf("         commit. WRITTEN, UNBLOCKED and ASSERTING: what it lacks is a\n");
-    std::printf("         harness, not a rule.\n");
+    std::printf("         marked † in §4.11). An in-editor pass now EXISTS; what\n");
+    std::printf("         these two lack are the real Stratocracy widgets they\n");
+    std::printf("         bind over. WRITTEN, UNBLOCKED and ASSERTING: what they\n");
+    std::printf("         lack is a subject, not a rule.\n");
     std::printf("NOT RUN  T-UI-04 -- the production menu binds to the buildlist derived\n");
     std::printf("         from the four Stub-2 unit rows plus current fameTotal, and the\n");
     std::printf("         flag never appears. Same reason, same state. No buildlist query\n");

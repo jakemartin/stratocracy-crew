@@ -4,7 +4,8 @@
 // WHAT THIS SUITE CLOSES, and why that is four IDs and not five. Part (b) runs
 // T-SAVE-01/02/03/05/06. `T-SAVE-06` asserts the hash is identical across the
 // HEADLESS and IN-ENGINE builds; it is marked † in §4.11, asserted jointly with
-// T-INT-02, and no in-editor Automation harness exists -- so it cannot close here,
+// T-INT-02, which replays IN-ENGINE and so needs a vendored replayer that a
+// ruling defers -- so it cannot close here,
 // and it is printed by name at the end rather than folded into the tally. The four
 // that do close are T-SAVE-01, 02, 03 and 05.
 //
@@ -507,9 +508,10 @@ int main() {
     std::printf("\n");
     std::printf("NOT RUN  T-SAVE-06 stateHash stability across the headless and in-engine\n");
     std::printf("         builds. §4.11 marks it †, it is asserted JOINTLY with T-INT-02,\n");
-    std::printf("         and no in-editor Automation harness exists. Its OTHER blocker —\n");
-    std::printf("         §4.10's canonical state hash being unbuilt — is removed by this\n");
-    std::printf("         build; the editor pass is now the whole of what it waits on.\n");
+    std::printf("         which replays IN-ENGINE. Its other two blockers are gone:\n");
+    std::printf("         §4.10's canonical state hash is built by this build,\n");
+    std::printf("         and an in-editor Automation harness now EXISTS. What\n");
+    std::printf("         remains is a VENDORED replayer, which a ruling defers.\n");
     std::printf("NOT RUN  T-SAVE-07 harness compatibility (a Balance Analyst self-play log\n");
     std::printf("         validates and replays as a save). cpp_reference/selfplay.cpp is a\n");
     std::printf("         combat-only 1v1 duel harness that prints a table and emits no\n");

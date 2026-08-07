@@ -135,8 +135,9 @@ them rather than letting a green run imply full coverage:
 
 - **T-DATA-05** — the in-editor Unreal Automation half of row 2 (DataTable import
   parity + the `EUnitType` mirror). §4.11 marks it **†**; nothing headless can assert
-  it, and Q29 refuses a ledger flip on a partial acceptance set, so **row 2's flip
-  waits on the editor pass** even though its headless half is green.
+  it. It **has since run**: green in the UE project at `fed8ae9`, over the data bytes
+  of this repo's `b1ea992` and tied to them by sha256, so row 2's acceptance set is
+  complete and no longer waits on the editor pass.
 - **T-MOVE-07** — reserved and unwritten. Recon's *"ignores some terrain cost"* is
   blocked on the Q2 movement-class ruling, and no gate is written until the rule exists.
 - **Four of row 7's fixtures** — T-SCN-08 (a) and (b), T-SCN-09's asserting branch,

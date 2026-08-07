@@ -324,7 +324,9 @@ int main() {
     // ---- what did not run ------------------------------------------------------------
     std::printf("\nNOT RUN  T-SAVE-06 — stateHash stability across the headless and "
                 "in-engine builds. It is row 10's only †, is asserted jointly with "
-                "T-INT-02, and no in-editor Automation harness exists.\n");
+                "T-INT-02. An in-editor Automation harness now EXISTS; "
+                "T-INT-02 replays in-engine and so needs a VENDORED "
+                "replayer, which a ruling defers.\n");
     std::printf("NOT RUN  T-SAVE-01..05 — closed by parts (a) and (b) at their own "
                 "commits; this suite re-asserts none of them.\n");
 
