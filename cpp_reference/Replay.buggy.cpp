@@ -273,6 +273,101 @@ void openTurn(GameState& g, const RulesTables& t) {
     }
 }
 
+// The pass-1 fixture carries this function UNCHANGED from the good implementation.
+// The seed is not what these fixtures inject a defect into, and it must link:
+// test_replay.cpp calls it, so an absent symbol would fail pass 1 as a LINK error
+// instead of as the caught defect the pass exists to demonstrate.
+bool seedFromScenario(GameState& g, const Scenario& sc, const RulesTables& t,
+                      int firstSide, std::string& err) {
+    if (t.units == nullptr || t.terrain == nullptr) {
+        err = "no data tables supplied";
+        return false;
+    }
+    // The board is indexed row-major over bounds, so a terrain list of any other
+    // length would be read out of range below. loadScenario validates this; the
+    // check is here because this function is public and a caller may hand it a
+    // Scenario that never went through the loader.
+    if (sc.terrainId.size() !=
+        static_cast<std::size_t>(sc.bounds.cols) * static_cast<std::size_t>(sc.bounds.rows)) {
+        err = "scenario terrain length does not match its bounds";
+        return false;
+    }
+
+    GameState next;                    // built aside; assigned only on success
+
+    next.bounds = sc.bounds;
+    next.terrain.assign(sc.terrainId.size(), -1);
+    for (std::size_t i = 0; i < sc.terrainId.size(); ++i) {
+        int idx = -1;
+        for (std::size_t k = 0; k < t.terrain->size(); ++k)
+            if ((*t.terrain)[k].id == sc.terrainId[i]) idx = static_cast<int>(k);
+        if (idx < 0) {
+            err = "terrain Id '" + sc.terrainId[i] + "' is in no loaded row";
+            return false;
+        }
+        next.terrain[i] = idx;
+    }
+
+    next.nextUnitId = 1;
+    // N is not a Stub 7 field. §2.7 fixes it at 1 (Q4), read here the same way
+    // Driver's installScenario reads it, rather than inventing a scenario field.
+    next.economy.captureTurns = 1;
+    for (int i = 0; i < SIDE_COUNT; ++i) next.flagUnit[i] = -1;
+
+    for (const ScenarioPlacement& p : sc.placements) {
+        int defIndex = -1;
+        for (std::size_t k = 0; k < t.units->size(); ++k)
+            if ((*t.units)[k].id == p.unitId) defIndex = static_cast<int>(k);
+        if (defIndex < 0) {
+            err = "unit Id '" + p.unitId + "' is in no loaded row";
+            return false;
+        }
+        GameUnit u;
+        u.id        = next.nextUnitId++;
+        u.side      = p.side;
+        u.defIndex  = defIndex;
+        u.hex       = p.hex;
+        u.placement = p.hex;          // the file's deployment hex; guided reads this
+        u.hp        = (*t.units)[defIndex].hpMax;
+        next.units.push_back(u);
+        // The designation comes from the FILE. T-SCN-01 has already checked it is
+        // exactly one Tank per side, so this copies rather than chooses.
+        if (p.isFlag) next.flagUnit[p.side] = u.id;
+    }
+
+    // Objectives are every capturable tile the TABLE marks -- Data.h decides what is
+    // capturable -- owned as the FILE says. A capturable hex the file does not name
+    // is unowned (§2.7).
+    for (int row = 0; row < sc.bounds.rows; ++row) {
+        for (int col = 0; col < sc.bounds.cols; ++col) {
+            const std::size_t i =
+                static_cast<std::size_t>(row) * static_cast<std::size_t>(sc.bounds.cols) + col;
+            const int ti = next.terrain[i];
+            if (ti < 0 || !(*t.terrain)[ti].capturable) continue;
+            Objective o;
+            o.hex          = offsetToAxial(col, row);
+            o.owner        = OWNER_NEUTRAL;
+            o.terrainIndex = ti;
+            for (const ScenarioOwner& w : sc.ownership)
+                if (hexEqual(w.hex, o.hex)) o.owner = w.owner;
+            next.economy.objectives.push_back(o);
+        }
+    }
+
+    // §2.9's difficulty handicap is a match-setup parameter applied on top, not a
+    // scenario field, so the file's value is what initSide gets (Q8).
+    initSide(next.economy, 0, sc.startingFame[0]);
+    initSide(next.economy, 1, sc.startingFame[1]);
+
+    // Row 5 owns the match. The first turn is opened the same way every later one
+    // is, so what this returns is a state a real match reaches.
+    if (!initMatch(next.turn, firstSide, sc.turnCap, err)) return false;
+    openTurn(next, t);
+
+    g = next;
+    return true;
+}
+
 // ---------------------------------------------------------------------------
 // The replayer.
 // ---------------------------------------------------------------------------

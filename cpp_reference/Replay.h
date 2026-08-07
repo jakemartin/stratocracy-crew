@@ -48,6 +48,7 @@
 #include "Hex.h"
 #include "Move.h"
 #include "Save.h"
+#include "Scenario.h"
 #include "Turn.h"
 
 namespace strat {
@@ -170,6 +171,26 @@ std::string canonicalStateHash(const GameState& g);
 // and it is FILED AS A CHANGE REQUEST rather than hidden: the two should converge on
 // one implementation over `GameState` once the driver reads from it.
 void openTurn(GameState& g, const RulesTables& t);
+
+// THE ONLY Scenario -> GameState mapping in the project, and it is here because
+// §4.9 part 2's bridge and the headless fixture must produce the SAME seed. A seed
+// re-implemented on the engine side is exactly the divergence T-INT-02 exists to
+// catch: both worlds would pass their own tests and disagree on the hash. Driver's
+// `installScenario` is the older sibling over `Session`; that the two do not yet
+// share one implementation is the same convergence change request already filed
+// above for `openTurn`/`openActiveTurn`, and it is not fixed here.
+//
+// Builds aside and assigns to `g` only on success, so a refusal leaves the caller's
+// state untouched. On success the match is initialised and the FIRST TURN IS OPEN --
+// the same state a real match reaches, never a half-built one.
+//
+// `firstSide` IS A PARAMETER AND NOT A DEFAULT because no rule in this project
+// decides it: Stub 7's scenario file carries no such field and §2 names no rule, so
+// the module refuses to invent one. Filed as a change request for the Director. Both
+// callers pass the same value; if they ever disagree the hashes diverge and T-INT-02
+// reports it, which is the check doing its job rather than a silent drift.
+bool seedFromScenario(GameState& g, const Scenario& sc, const RulesTables& t,
+                      int firstSide, std::string& err);
 
 struct ReplayResult {
     bool        ok        = false;
