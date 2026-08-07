@@ -1,8 +1,9 @@
 """Vendor the canonical data files into the Unreal project -- GDD §4.8 and §4.9.
 
-Two kinds travel this path: the §4.8 tables, and from 2026-08-07 Stub 7's shipped
-scenario file, which §4.9 part 2's bridge loads. See TABLES / SCENARIOS below for
-why the scenario is here and why that does not make it a §4.8 table.
+Three kinds travel this path: the §4.8 tables, and from 2026-08-07 both Stub 7's
+shipped scenario file, which §4.9 part 2's bridge loads, and the committed §4.10
+parity fixture, which the editor pass replays. See TABLES / SCENARIOS / FIXTURES
+below for why the latter two are here and why that makes neither a §4.8 table.
 
 §4.8's principle is "authored once, read twice, proven equal": each table is ONE
 canonical CSV in this repo under `data/`. The headless loader parses those bytes
@@ -46,8 +47,17 @@ ROOT = Path(__file__).resolve().parent
 # in-engine to one hash. Both sides must seed `GameState` from the SAME BYTES
 # through the same vendored Scenario module; a seed hand-built on the engine side
 # would be the ported-not-vendored divergence T-INT-02 exists to catch.
+#
+# THREE KINDS AS OF 2026-08-07, and parity_fixture.save is the third. It is neither
+# a table nor a scenario: it is the committed §4.10 save the editor pass REPLAYS, the
+# subject of T-INT-02 and of T-SAVE-06's in-engine half. It is carried here for the
+# same reason the scenario is -- the headless and in-engine replays must consume the
+# SAME BYTES, and a fixture re-emitted on the engine side would compare the engine
+# against itself. The crew-side GATE-REPLAY-FIXTURE keeps it fresh at the source;
+# GATE-DATA-VENDOR keeps this copy honest against that source.
 TABLES = ["units.csv", "terrain.csv", "effectiveness.csv"]
 SCENARIOS = ["ferrum_crossing.json"]
+FIXTURES = ["parity_fixture.save"]
 
 MANIFEST = "StratData.manifest.json"
 
@@ -97,7 +107,7 @@ def main() -> int:
     dest.mkdir(parents=True, exist_ok=True)
 
     entries = {}
-    for name in TABLES + SCENARIOS:
+    for name in TABLES + SCENARIOS + FIXTURES:
         blob = git_bytes("show", f"{commit}:data/{name}")
         (dest / name).write_bytes(blob)
         entries[name] = hashlib.sha256(blob).hexdigest()
@@ -110,16 +120,23 @@ def main() -> int:
         "sourcePrefix": "data/",
         "note": (
             "Vendored verbatim from the git object store at dataCommit; names are "
-            "unchanged from the crew repo. TWO KINDS OF FILE, and being carried here "
-            "makes neither the other. units.csv, terrain.csv and effectiveness.csv "
+            "unchanged from the crew repo. THREE KINDS OF FILE, and being carried here "
+            "makes none of them another. units.csv, terrain.csv and effectiveness.csv "
             "are the §4.8 tables; T-DATA-05 compares the imported UDataTable rows "
             "against those bytes. ferrum_crossing.json is Stub 7's scenario file and "
             "is NOT a §4.8 table -- T-DATA-05 asserts nothing about it and imports it "
             "into no UDataTable. It is carried from 2026-08-07 because §4.9 part 2's "
             "bridge loads the shipped scenario through strat::loadScenario, and "
             "T-INT-02 requires the headless and in-engine replays to seed GameState "
-            "from the same bytes. Every file named in `files` below is hash-checked by "
-            "GATE-DATA-VENDOR regardless of which kind it is. This manifest records "
+            "from the same bytes. parity_fixture.save is the committed §4.10 save the "
+            "editor pass REPLAYS -- the subject of T-INT-02 and of T-SAVE-06's "
+            "in-engine half -- and is likewise imported into no UDataTable; it is "
+            "carried for the same reason as the scenario, because a fixture re-emitted "
+            "on the engine side would compare the engine against itself. It is kept "
+            "fresh at the source by the crew's GATE-REPLAY-FIXTURE, and this copy is "
+            "kept equal to that source by GATE-DATA-VENDOR. Every file named in `files` "
+            "below is hash-checked by GATE-DATA-VENDOR regardless of which kind it is. "
+            "This manifest records "
             "dataCommit, so like StratRules.manifest.json it cannot itself be stored "
             "at that commit and is verified by recomputation rather than by hash-match."
         ),
@@ -128,8 +145,8 @@ def main() -> int:
     (dest / MANIFEST).write_text(
         json.dumps(manifest, indent=2, sort_keys=False) + "\n", encoding="utf-8")
 
-    print(f"\nVendored {len(TABLES)} tables + {len(SCENARIOS)} scenario(s) "
-          f"to {dest} at {commit[:7]}.")
+    print(f"\nVendored {len(TABLES)} tables + {len(SCENARIOS)} scenario(s) + "
+          f"{len(FIXTURES)} replay fixture(s) to {dest} at {commit[:7]}.")
     print("Re-import the DataTables in the editor if the bytes changed.")
     return 0
 
