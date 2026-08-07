@@ -1,5 +1,5 @@
 {
-  "note": "The vendored set, declared rather than inferred. T-INT-01 previously derived it by globbing cpp_reference/ at rulesCommit, which silently equated 'every crew module' with 'every vendored module'. Those were the same set only until Save landed at 737f666; from that commit onward the check demanded Save, Replay and Balance be vendored, which the Director's rulings of 2026-08-05 refuse, and rulesCommit could not be advanced for any reason. This file is read from the git object store at rulesCommit by both sync_stratrules.py and the T-INT-01 check, so neither imports the other's constants and the declaration is a tracked, reviewable blob rather than a literal in a script. It MUST PARTITION the crew's modules: every X with both cpp_reference/X.h and cpp_reference/X.good.cpp at rulesCommit appears in exactly one of `vendored` and `excluded`. A module in neither fails the check, so a new crew module cannot be vendored by accident or forgotten in silence -- which is the one property the old glob did buy, kept here deliberately.",
+  "note": "The vendored set, declared rather than inferred. T-INT-01 previously derived it by globbing cpp_reference/ at rulesCommit, which silently equated 'every crew module' with 'every vendored module'. Those were the same set only until Save landed at 737f666; from that commit onward the check demanded Save, Replay and Balance be vendored, which the Director's rulings of 2026-08-05 refuse, and rulesCommit could not be advanced for any reason. This file is read from the git object store at rulesCommit by both sync_stratrules.py and the T-INT-01 check, so neither imports the other's constants and the declaration is a tracked, reviewable blob rather than a literal in a script. It MUST PARTITION the crew's modules: every X with both cpp_reference/X.h and cpp_reference/X.good.cpp at rulesCommit appears in exactly one of `vendored` and `excluded`. A module in neither fails the check, so a new crew module cannot be vendored by accident or forgotten in silence -- which is the one property the old glob did buy, kept here deliberately. Save and Replay moved from `excluded` to `vendored` on 2026-08-07, when GDD 4.9 part 2's bridge consumer was built: the exclusion each carried named that consumer as its own unblocking condition, and the account above of why this file exists is a record of 2026-08-05 and is not re-dated by their move.",
   "vendored": [
     "Ai",
     "Combat",
@@ -8,13 +8,13 @@
     "Economy",
     "Hex",
     "Move",
+    "Replay",
+    "Save",
     "Scenario",
     "Turn",
     "Ui"
   ],
   "excluded": {
-    "Balance": "Ruled 2026-08-05. Row 10 part (c)'s self-play log producer. Not vendored until GDD 4.9 part 2 has a bridge consumer; vendoring now would re-date T-INT-01's and T-INT-04's closures for a consumer that does not exist.",
-    "Replay": "Ruled 2026-08-05 (Ruling R). Row 10 part (b)'s headless replayer and 4.10's canonical state hash. Same terms as Balance.",
-    "Save": "Ruled 2026-08-05 (Ruling N). Row 10 part (a)'s save format. Same terms as Balance."
+    "Balance": "Ruled 2026-08-05. Row 10 part (c)'s self-play log producer. Not vendored until GDD 4.9 part 2 has a bridge consumer; vendoring now would re-date T-INT-01's and T-INT-04's closures for a consumer that does not exist. That condition is now met for Save and Replay and is still NOT met for Balance: the bridge consumes GameState, the command surface and the canonical state hash, and consumes no self-play log producer. Balance stays out on its own terms, not by inheriting theirs."
   }
 }
