@@ -1,4 +1,8 @@
-"""Vendor the canonical data CSVs into the Unreal project -- GDD §4.8.
+"""Vendor the canonical data files into the Unreal project -- GDD §4.8 and §4.9.
+
+Two kinds travel this path: the §4.8 tables, and from 2026-08-07 Stub 7's shipped
+scenario file, which §4.9 part 2's bridge loads. See TABLES / SCENARIOS below for
+why the scenario is here and why that does not make it a §4.8 table.
 
 §4.8's principle is "authored once, read twice, proven equal": each table is ONE
 canonical CSV in this repo under `data/`. The headless loader parses those bytes
@@ -30,12 +34,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 
-# The canonical set, declared rather than globbed. `data/` also holds
-# ferrum_crossing.json, which is Stub 7's scenario file and NOT a §4.8 table --
-# globbing the directory would vendor it and make the manifest claim more than
-# §4.8 describes. Declaring the three names keeps the manifest's scope equal to
-# the schema section's scope.
+# The canonical set, declared rather than globbed, so the manifest's scope is a
+# stated list and not whatever happens to sit in `data/`.
+#
+# TWO KINDS OF FILE, and the manifest says which is which rather than implying
+# that everything it carries is a §4.8 table. The three CSVs are the §4.8 tables
+# T-DATA-05 compares row-for-row. ferrum_crossing.json is Stub 7's scenario file
+# and is NOT a §4.8 table -- that reading is unchanged. What changed on 2026-08-07
+# is that it now has to be HERE: §4.9 part 2's bridge calls `strat::loadScenario`
+# on the shipped scenario, and T-INT-02 replays the same log headless and
+# in-engine to one hash. Both sides must seed `GameState` from the SAME BYTES
+# through the same vendored Scenario module; a seed hand-built on the engine side
+# would be the ported-not-vendored divergence T-INT-02 exists to catch.
 TABLES = ["units.csv", "terrain.csv", "effectiveness.csv"]
+SCENARIOS = ["ferrum_crossing.json"]
 
 MANIFEST = "StratData.manifest.json"
 
@@ -85,7 +97,7 @@ def main() -> int:
     dest.mkdir(parents=True, exist_ok=True)
 
     entries = {}
-    for name in TABLES:
+    for name in TABLES + SCENARIOS:
         blob = git_bytes("show", f"{commit}:data/{name}")
         (dest / name).write_bytes(blob)
         entries[name] = hashlib.sha256(blob).hexdigest()
@@ -98,19 +110,26 @@ def main() -> int:
         "sourcePrefix": "data/",
         "note": (
             "Vendored verbatim from the git object store at dataCommit; names are "
-            "unchanged from the crew repo. These are the §4.8 tables only -- "
-            "data/ferrum_crossing.json is Stub 7's scenario file and is deliberately "
-            "not here. T-DATA-05 compares the imported UDataTable rows against these "
-            "bytes. This manifest records dataCommit, so like StratRules.manifest.json "
-            "it cannot itself be stored at that commit and is verified by "
-            "recomputation rather than by hash-match."
+            "unchanged from the crew repo. TWO KINDS OF FILE, and being carried here "
+            "makes neither the other. units.csv, terrain.csv and effectiveness.csv "
+            "are the §4.8 tables; T-DATA-05 compares the imported UDataTable rows "
+            "against those bytes. ferrum_crossing.json is Stub 7's scenario file and "
+            "is NOT a §4.8 table -- T-DATA-05 asserts nothing about it and imports it "
+            "into no UDataTable. It is carried from 2026-08-07 because §4.9 part 2's "
+            "bridge loads the shipped scenario through strat::loadScenario, and "
+            "T-INT-02 requires the headless and in-engine replays to seed GameState "
+            "from the same bytes. Every file named in `files` below is hash-checked by "
+            "GATE-DATA-VENDOR regardless of which kind it is. This manifest records "
+            "dataCommit, so like StratRules.manifest.json it cannot itself be stored "
+            "at that commit and is verified by recomputation rather than by hash-match."
         ),
         "files": entries,
     }
     (dest / MANIFEST).write_text(
         json.dumps(manifest, indent=2, sort_keys=False) + "\n", encoding="utf-8")
 
-    print(f"\nVendored {len(TABLES)} tables to {dest} at {commit[:7]}.")
+    print(f"\nVendored {len(TABLES)} tables + {len(SCENARIOS)} scenario(s) "
+          f"to {dest} at {commit[:7]}.")
     print("Re-import the DataTables in the editor if the bytes changed.")
     return 0
 
