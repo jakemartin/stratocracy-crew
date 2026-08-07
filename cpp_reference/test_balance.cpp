@@ -324,9 +324,11 @@ int main() {
     // ---- what did not run ------------------------------------------------------------
     std::printf("\nNOT RUN  T-SAVE-06 — stateHash stability across the headless and "
                 "in-engine builds. It is row 10's only †, is asserted jointly with "
-                "T-INT-02. An in-editor Automation harness now EXISTS; "
-                "T-INT-02 replays in-engine and so needs a VENDORED "
-                "replayer, which a ruling defers.\n");
+                "T-INT-02, and both are in-engine, which this suite is not. NOT RUN "
+                "here and NOT open: both CLOSED in the editor pass at UE 0897cb5. The "
+                "blocker this line used to name is spent — the VENDORED replayer "
+                "T-INT-02 needs was vendored at f5fdb69, retiring the deferring "
+                "ruling.\n");
     std::printf("NOT RUN  T-SAVE-01..05 — closed by parts (a) and (b) at their own "
                 "commits; this suite re-asserts none of them.\n");
 

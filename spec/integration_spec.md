@@ -31,8 +31,12 @@ headless one.** §4.9's own Acceptance line makes the split:
   every gate run, and §4.9 says of T-INT-04 that *"the gate run itself is the
   assert"*.
 - **T-INT-02** (replay parity), **T-INT-03** (rejection safety) and **T-INT-05**
-  (presentation statelessness) are the editor pass. **No in-editor Automation
-  harness exists**, so they did not run.
+  (presentation statelessness) are the editor pass, so **none of them runs in this
+  build** — that is a property of where they live, not of anything being absent.
+  **T-INT-02 and T-INT-03 have since run and passed** in the editor pass at UE
+  `0897cb5`, where §4.9 part 2's bridge landed; `T-SAVE-06` closed jointly with
+  `T-INT-02` there. **T-INT-05 has not run**, and what it lacks is the real
+  Stratocracy widgets it asserts over.
 
 **THE LEDGER ROW THEREFORE DOES NOT FLIP.** Q29 requires the full acceptance set
 at one commit, per acceptance ID as well as per row. This is row 2's posture on
@@ -50,9 +54,12 @@ stands down if the calendar slips — **not headless-versus-editor**. §4.5's cl
 that the build-order table is authoritative governs which side of the *cut line*
 an ID sits on, which is a different question.
 
-So T-INT-03 does not run here, for the same reason T-INT-02 and T-INT-05 do not.
-Its subject is besides the canonical state hash, which §4.10 owns and **row 10
-has not built**.
+So T-INT-03 does not run here, for the same reason T-INT-02 and T-INT-05 do not:
+this build is headless and the editor pass is where all three live. **The reason
+this paragraph used to give is spent.** It said T-INT-03's subject is besides the
+canonical state hash, *"which §4.10 owns and row 10 has not built"* — row 10's
+part (b) built it, and the bridge whose command surface T-INT-03 asserts over
+landed at UE `0897cb5`, where the ID ran and passed.
 
 ## What gets vendored — derived, not chosen
 
@@ -137,7 +144,8 @@ to the UE project.
 
 Acceptance: **T-INT-01, T-INT-04** headless, on every gate run
 (`python run.py --integration`, and at the end of `--week1`). T-INT-02, T-INT-03,
-T-INT-05 in the editor pass, which does not exist.
+T-INT-05 in the editor pass, which landed at UE `fed8ae9`; T-INT-02 and T-INT-03
+ran and passed there at UE `0897cb5`, and T-INT-05 has not run.
 
 ## The gate must be shown to fail — it was
 
@@ -221,13 +229,17 @@ would put a green T-INT-01 beside a vendoring that never happened.
   in neither `vendored` nor `excluded` fails. That keeps the one property the
   glob was buying — a new crew module cannot be vendored by accident or forgotten
   in silence — while letting a ruled exclusion be stated instead of inferred.
-- **No bridge exists.** No load mapping, no command submission, no event list, no
-  actor and no widget. §4.9 part 2 is unbuilt.
+- **THE BRIDGE HAS SINCE BEEN BUILT**, at UE `0897cb5`. This bullet used to read
+  *"No bridge exists. No load mapping, no command submission, no event list, no
+  actor and no widget. §4.9 part 2 is unbuilt."* Two of those five are now false:
+  the load mapping and the command submission exist, as `FStratBridge`. **The
+  other three are unchanged — there is still no event list, no actor and no
+  widget** — so §4.9 part 2 is partly built and this bullet says which parts.
 - **The canonical state hash HAS SINCE BEEN BUILT**, as §4.11 **row 10**'s part
   (b) — `cpp_reference/Replay.h`, where §4.10 defines it. T-INT-02 and T-INT-03
-  therefore have a subject; what they still lack is the in-editor Automation
-  harness, which is now the whole of what they wait on. The `stateHash` in
-  `Driver.h` is the driver's own debug digest (`GATE-DRV-06`) and is a
-  different thing from both.
+  therefore have a subject, and both have since **run and passed** in the editor
+  pass at UE `0897cb5`; `T-SAVE-06` closed jointly with `T-INT-02` there. The
+  `stateHash` in `Driver.h` is the driver's own debug digest (`GATE-DRV-06`) and
+  is a different thing from both.
 - **No acceptance ID is minted**, and none of §4.5's counts moves on the build
   alone.

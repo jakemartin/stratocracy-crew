@@ -3,11 +3,13 @@
 //
 // WHAT THIS SUITE CLOSES, and why that is four IDs and not five. Part (b) runs
 // T-SAVE-01/02/03/05/06. `T-SAVE-06` asserts the hash is identical across the
-// HEADLESS and IN-ENGINE builds; it is marked † in §4.11, asserted jointly with
-// T-INT-02, which replays IN-ENGINE and so needs a vendored replayer that a
-// ruling defers -- so it cannot close here,
-// and it is printed by name at the end rather than folded into the tally. The four
-// that do close are T-SAVE-01, 02, 03 and 05.
+// HEADLESS and IN-ENGINE builds; it is marked † in §4.11 and asserted jointly with
+// T-INT-02, which replays IN-ENGINE -- so it cannot close in a headless build, and
+// it is printed by name at the end rather than folded into the tally. It has since
+// closed IN THE EDITOR PASS, at UE 0897cb5, together with T-INT-02; the reason this
+// comment used to give -- that T-INT-02 needed a vendored replayer a ruling
+// deferred -- is spent, Save and Replay having been vendored at f5fdb69. The four
+// this suite closes are T-SAVE-01, 02, 03 and 05.
 //
 // THE LOG CARRIES THE COMPLETE §4.9 COMMAND SET. Q29's conservative reading closes
 // an acceptance ID only when its whole written fixture set ran, and §4.11 puts
@@ -759,19 +761,16 @@ int main(int argc, char** argv) {
     std::printf("\n");
     std::printf("NOT RUN  T-SAVE-06 stateHash stability across the headless and in-engine\n");
     std::printf("         builds. §4.11 marks it †, it is asserted JOINTLY with T-INT-02,\n");
-    std::printf("         which replays IN-ENGINE. Three of its blockers are gone:\n");
-    std::printf("         §4.10's canonical state hash is built by this build; an\n");
-    std::printf("         in-editor Automation harness EXISTS; and the replayer is no\n");
-    std::printf("         longer unvendored -- Save and Replay were vendored at crew\n");
-    std::printf("         f5fdb69, so the deferring ruling no longer describes the tree.\n");
-    std::printf("         What remains is the IN-ENGINE HALF ITSELF, and it is not a\n");
-    std::printf("         headless artifact: the editor build must replay\n");
+    std::printf("         which replays IN-ENGINE -- so no headless build closes it, and\n");
+    std::printf("         this one does not run the ID. It is NOT RUN here and NOT open:\n");
+    std::printf("         it CLOSED in the editor pass at UE 0897cb5, together with\n");
+    std::printf("         T-INT-02, where the §4.9 part 2 bridge replays\n");
     std::printf("         data/parity_fixture.save through the vendored modules and\n");
-    std::printf("         compare its own canonical state hash against the one that\n");
-    std::printf("         file carries. That runs in the UE project, in the editor\n");
-    std::printf("         pass, where T-SAVE-06 closes jointly with T-INT-02. This\n");
-    std::printf("         build supplies the fixture and the headless hash and keeps\n");
-    std::printf("         them fresh (GATE-REPLAY-FIXTURE); it does not run the ID.\n");
+    std::printf("         compares its own canonical state hash against the one that\n");
+    std::printf("         file carries. What this build supplies to that comparison is\n");
+    std::printf("         its headless half -- the fixture and the hash it records --\n");
+    std::printf("         and GATE-REPLAY-FIXTURE above is what keeps them fresh, so a\n");
+    std::printf("         stale fixture cannot reach the in-engine side quietly.\n");
     std::printf("NOT RUN  T-SAVE-07 harness compatibility (a Balance Analyst self-play log\n");
     std::printf("         validates and replays as a save). cpp_reference/selfplay.cpp is a\n");
     std::printf("         combat-only 1v1 duel harness that prints a table and emits no\n");

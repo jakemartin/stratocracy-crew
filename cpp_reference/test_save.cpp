@@ -387,9 +387,12 @@ int main() {
     std::printf("         by the empty-log case above -- the parser accepting every prefix\n");
     std::printf("         as a DOCUMENT is not every prefix being a LOADABLE SAVE.\n");
     std::printf("NOT RUN  T-SAVE-06 stateHash stability across the headless and in-engine\n");
-    std::printf("         builds. Marked † in §4.11, asserted jointly with T-INT-02, and no\n");
-    std::printf("         in-editor Automation harness exists. Its OTHER blocker -- the\n");
-    std::printf("         canonical state hash being unbuilt -- was removed by part (b).\n");
+    std::printf("         builds. Marked † in §4.11 and asserted jointly with T-INT-02, so\n");
+    std::printf("         it closes in the editor pass and in no headless build. It is NOT\n");
+    std::printf("         RUN here and NOT open: it CLOSED at UE 0897cb5, with T-INT-02.\n");
+    std::printf("         Both blockers this line used to name are gone -- the canonical\n");
+    std::printf("         state hash was built by part (b), and the in-editor Automation\n");
+    std::printf("         harness landed at UE fed8ae9.\n");
     std::printf("NOT RUN  T-SAVE-07 harness compatibility (a Balance Analyst self-play log\n");
     std::printf("         validates and replays as a save). Needs row 6's self-play output.\n");
     std::printf("         Part (c), week 4.\n");

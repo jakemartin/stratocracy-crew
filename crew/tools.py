@@ -180,10 +180,13 @@ WEEK1_ROWS = {
                     "Move.cpp", "Economy.cpp", "Turn.cpp", "Combat.cpp", "Ai.cpp",
                     "test_balance.cpp"],
         "stem": "test_balance_runner",
-        # ONE acceptance ID closes here — T-SAVE-07, in three clauses. T-SAVE-06 does not:
-        # it is row 10's only †, is asserted jointly with T-INT-02, and no in-editor
-        # Automation harness exists. GATE-BALANCE-* mint no acceptance ID, on the
-        # GATE-SAVE-PARSE and GATE-REPLAY-* precedent.
+        # ONE acceptance ID closes here — T-SAVE-07, in three clauses. T-SAVE-06 does
+        # not, and the reason is now that this suite is HEADLESS rather than that
+        # anything is missing: it is row 10's only †, is asserted jointly with
+        # T-INT-02, and both closed in the editor pass at UE 0897cb5. Nothing headless
+        # can close them, which is what † and "jointly" meant all along.
+        # GATE-BALANCE-* mint no acceptance ID, on the GATE-SAVE-PARSE and
+        # GATE-REPLAY-* precedent.
         "tests": "T-SAVE-07 + GATE-BALANCE-*",
     },
     # Not a §4.7 stub and not a ledger row: the debug-command driver builds no rules
@@ -475,20 +478,25 @@ def certify_week1_fn() -> dict:
             "fed8ae9); what they still lack are the real Stratocracy widgets they "
             "assert over. Row 2 no longer shares this posture — its set is complete.",
             "T-SAVE-06 — stateHash stability across the headless and in-engine builds. "
-            "§4.11 marks it †, and it is asserted jointly with T-INT-02. An in-editor "
-            "Automation harness now exists (UE fed8ae9), and §4.10's canonical state "
-            "hash was built by part (b), so neither is what it waits on any more: "
-            "T-INT-02 replays IN-ENGINE and so needs a VENDORED replayer, which a "
-            "ruling defers. It is the only † of row 10's seven.",
-            "Row 10's Save, Replay and Selfplay modules are NOT VENDORED into "
-            "Source/StratRules/. "
-            "§4.9 enumerates the ten modules the sync script carries and these are an "
-            "eleventh, a twelfth and a thirteenth. Ruled 2026-08-05, at part (b): "
-            "vendoring waits on "
-            "§4.9 part 2, since no bridge exists — no load mapping, no command surface, "
-            "no event list, no actor and no widget — so the bridge consumer is still "
-            "hypothetical, while vendoring would re-date T-INT-01's and T-INT-04's "
-            "closures now.",
+            "§4.11 marks it †, and it is asserted jointly with T-INT-02. It is no "
+            "longer uncovered: BOTH closed in the editor pass at UE 0897cb5, where the "
+            "§4.9 part 2 bridge replays data/parity_fixture.save in-engine and compares "
+            "its own canonical state hash against the one that file carries. Every "
+            "blocker this entry used to name is gone — the in-editor Automation harness "
+            "landed at UE fed8ae9, §4.10's canonical state hash was built by part (b), "
+            "and the replayer was vendored at f5fdb69, which retired the ruling that "
+            "deferred it. It remains the only † of row 10's seven, and it remains "
+            "uncloseable by any headless suite in this repo.",
+            "Row 10's Selfplay module is NOT VENDORED into Source/StratRules/. "
+            "§4.9 enumerates the ten modules the sync script carries and this is an "
+            "eleventh. The 2026-08-05 ruling recorded here also covered Save and "
+            "Replay, and for those two it has been SPENT rather than reversed: it "
+            "deferred vendoring until §4.9 part 2 supplied a bridge consumer, that "
+            "consumer was built, and both were vendored at f5fdb69 ahead of it. What "
+            "the bridge does not consume is Selfplay — it is a headless log producer "
+            "that no in-engine code calls — so for that module the ruling still "
+            "describes the tree and vendoring would re-date T-INT-01's and T-INT-04's "
+            "closures for no consumer.",
             "GATE-DRV-01..12, GATE-SCN-PARSE, GATE-SCN-HASH, GATE-SAVE-PARSE, "
             "GATE-AI-SMOKE and GATE-CAP-PARTIAL gate a tool, two file formats, a smoke "
             "path and a partial-capture reading — not a rules system apiece. They are "
@@ -816,11 +824,15 @@ def run_integration_gate_fn(ue_path: str | None = None) -> dict:
     tally = f"{sum(1 for _, ok, _ in results if ok)}/{len(results)} passed"
     lines.append("")
     lines.append("T-INT-02, T-INT-03 and T-INT-05 are the editor pass (§4.9 "
-                 "Acceptance) and DID NOT RUN. An in-editor Automation harness now "
-                 "EXISTS (UE fed8ae9) and runs T-DATA-05; these three still lack the "
-                 "subjects they assert over — T-INT-02 a vendored replayer, T-INT-03 "
-                 "the command surface, T-INT-05 real Stratocracy widgets. Row 9 cannot "
-                 "flip on this gate alone.")
+                 "Acceptance) and DID NOT RUN HERE — this gate is headless and cannot "
+                 "run any of them. That is now the ONLY thing this gate can say about "
+                 "them: T-INT-02 and T-INT-03 have since RUN AND PASSED in the editor "
+                 "pass at UE 0897cb5, where the §4.9 part 2 bridge landed, and "
+                 "T-SAVE-06 closed jointly with T-INT-02 there. T-INT-05 is the one "
+                 "still uncovered, and what it lacks is the real Stratocracy widgets it "
+                 "asserts over. Row 9 cannot flip on this gate alone — it never could, "
+                 "and whether it flips now is a question for the ledger and not for "
+                 "this runner.")
     lines.append(tally)
     summary = ("INTEGRATION GATE PASS — T-INT-01, T-INT-04" if passed
                else f"INTEGRATION GATE BLOCK — failing: {', '.join(failures)}")

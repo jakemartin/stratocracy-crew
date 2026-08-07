@@ -44,9 +44,11 @@ each has a reason that is not "we ran out of time":
 - **T-SAVE-01, 02, 03, 05** need the replayer to exist — they save, load, replay
   or apply a prefix. Part (b).
 - **T-SAVE-06** is the in-editor half of the parity pair, marked **`†`** in
-  §4.11 and asserted jointly with `T-INT-02`. No in-editor Automation harness
-  exists. Its OTHER blocker — the canonical state hash — was removed when part (b)
-  landed and defined it, so the editor pass is now the whole of what it waits on.
+  §4.11 and asserted jointly with `T-INT-02`, so no headless build can close it.
+  It has since **closed** — in the editor pass at UE `0897cb5`, together with
+  `T-INT-02`. Both blockers this entry used to name are gone: the canonical state
+  hash was built when part (b) landed and defined it, and the in-editor Automation
+  harness landed at UE `fed8ae9`.
 - **T-SAVE-07** needs row 6's self-play logs. Part (c), week 4.
 
 **The consequence is stated, not hidden: row 10's ledger row does NOT flip, and

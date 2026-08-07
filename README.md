@@ -391,10 +391,18 @@ which a manifest-vs-disk comparison would not catch, and is the reason the check
 written this way. All five known-bad inputs were run and all five blocked; the table
 is in the spec.
 
-**`T-INT-02`, `T-INT-03` and `T-INT-05` are the editor pass and did not run**, so
-the ledger row does **not** flip — rows 2, 7 and 8's posture. The module is defined
-but **not wired into a build target**: `Stratocracy.uproject` does not list it, no
-UBT build was run, and in-engine compilation is what the editor pass gates.
+**`T-INT-02`, `T-INT-03` and `T-INT-05` are the editor pass and do not run in this
+gate**, which is headless. **`T-INT-02` and `T-INT-03` have since run and passed**
+in the editor pass at UE `0897cb5`, where §4.9 part 2's bridge landed and
+`T-SAVE-06` closed jointly with `T-INT-02`. **`T-INT-05` has not run**, and what it
+lacks is the real Stratocracy widgets it asserts over — so the ledger row still
+does **not** flip, rows 7 and 8's posture. (Row 2's has since changed: its set is
+complete.) The sentence this paragraph used to carry — that the module is *"not
+wired into a build target: `Stratocracy.uproject` does not list it, no UBT build
+was run"* — is spent: UBT builds the vendored sources into the `StratBridge`
+module, which `Stratocracy.uproject` does list. `StratRules` is still absent from
+that array, and deliberately so; it carries no `IMPLEMENT_MODULE`, and listing it
+once stopped the editor from starting at all.
 
 ### The other half of week 1 — "Playable via debug commands"
 

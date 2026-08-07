@@ -8,9 +8,14 @@ Implemented at `cpp_reference/Replay.h` / `Replay.good.cpp`, gated by
 borrowed as `RulesTables`.
 
 **Acceptance.** `T-SAVE-01`, `T-SAVE-02`, `T-SAVE-03`, `T-SAVE-05` close here.
-`T-SAVE-06` **runs nowhere yet** — §4.11 marks it `†`, it is asserted jointly with
-`T-INT-02`, which replays in-engine and so needs a **vendored** replayer that a ruling
-defers; an in-editor Automation harness now exists and is no longer what it waits on.
+`T-SAVE-06` **does not close here** — §4.11 marks it `†` and it is asserted jointly
+with `T-INT-02`, which replays in-engine, so no headless build closes it. It has
+since **closed**, with `T-INT-02`, in the editor pass at UE `0897cb5`. Both blockers
+this line used to name are gone: the in-editor Automation harness landed at UE
+`fed8ae9`, and the **vendored** replayer `T-INT-02` needs was vendored at `f5fdb69`,
+retiring the ruling that deferred it. What this build owes that closure is its
+headless half — `data/parity_fixture.save` and the hash it records — which
+`GATE-REPLAY-FIXTURE` keeps fresh.
 `T-SAVE-07` is part (c).
 `GATE-REPLAY-*` mint no acceptance ID, on the `GATE-SAVE-PARSE` precedent.
 
