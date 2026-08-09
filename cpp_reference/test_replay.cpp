@@ -183,6 +183,18 @@ static AiState aiViewOf(const GameState& g, const std::vector<UnitDef>& ud,
     s.economy = g.economy;
     s.turn = g.turn;
     s.builtThisTurn = g.turn.builtThisTurn;
+
+    // §2.9's buildlist is DATA the caller supplies -- Ai.h says so, and inventing a
+    // ratio here would be a rule the GDD does not have. This caller supplies
+    // Infantry, `test_balance.cpp`'s choice for the same reason. WHAT THE LIST HOLDS
+    // BEYOND INFANTRY IS INERT ON THIS SCENARIO, and that is measured rather than
+    // assumed: {Infantry}, {Infantry, Tank} and all four unit types each emit a
+    // byte-identical fixture, because Q9 orders the affordable set by ASCENDING cost
+    // and Infantry is the cheapest of the four. Looked up by Id rather than by
+    // index, so a units.csv reorder cannot silently buy something else --
+    // GATE-BRIDGE-DEFS is the only check that would see that.
+    for (std::size_t i = 0; i < ud.size(); ++i)
+        if (ud[i].id == "Infantry") { s.buildlist.push_back(static_cast<int>(i)); break; }
     for (const GameUnit& u : g.units) {
         AiUnit a;
         a.id = u.id; a.side = u.side; a.defIndex = u.defIndex; a.hex = u.hex;
@@ -228,6 +240,47 @@ static void appendAiTurn(GameState& g, std::vector<SaveCommand>& log,
         const AiCommand a = nextCommand(view, side);
         SaveCommand sc;
         if (!aiCommandToSave(g, a, g.turn.turnNumber, side, sc)) break;
+        // `AiCommandKind` is {Build, Move, Attack, EndTurn} and has no Capture member,
+        // deliberately: Ai.h keeps capture completion a turn-boundary event owned by
+        // row 4, so nothing reading that enum can propose one. The command kind exists
+        // in §4.9 and in §4.10's log all the same, and a fixture that never carries it
+        // exercises four of the five kinds. So it is appended here rather than emitted
+        // by the AI -- one per side per turn, at the close of that side's turn.
+        //
+        // IT DOES REAL WORK. `openTurn` already ticks capture when a turn opens, and
+        // `captureTurns` is 1 on the shipped scenario, so this second tick is a no-op
+        // on objectives the side already held -- `captureTick` clears progress and
+        // moves on when `o.owner == side`. What it catches is an objective the side
+        // moved onto DURING the turn just played: the log walks Infantry onto the
+        // neutral Town at (2,7) on turn 1, and this is what flips it a turn earlier
+        // than the next turn opening would.
+        //
+        // §4.10 requires a `unit` field on Capture even though `applyCommand` hands
+        // `captureTick` the whole occupancy and never reads it. The side's lowest unit
+        // id with `canCapture` is written, which is stable under movement and under
+        // vector order both.
+        //
+        // GUARDED ON `running`: the match can end mid-turn on an Attack, and the AI
+        // then returns EndTurn, which `applyCommand` refuses. Without this guard the
+        // log would carry a Capture for a match already over.
+        if (a.kind == AiCommandKind::EndTurn && g.turn.running) {
+            SaveCommand cap;
+            cap.turn = g.turn.turnNumber;
+            cap.side = side;
+            cap.kind = SaveCommandKind::Capture;
+            cap.hasUnit = true;
+            cap.unitId = 0;
+            bool found = false;
+            for (const GameUnit& u : g.units) {
+                if (u.side != side) continue;
+                if (!(*t.units)[u.defIndex].canCapture) continue;
+                if (!found || u.id < cap.unitId) { cap.unitId = u.id; found = true; }
+            }
+            if (found) {
+                const ReplayResult rc = applyCommand(g, cap, t);
+                if (rc.ok) log.push_back(cap);
+            }
+        }
         const ReplayResult r = applyCommand(g, sc, t);
         if (!r.ok) break;                 // the AI proposed something the rules refuse
         log.push_back(sc);
@@ -287,23 +340,28 @@ static const int kParityFirstSide = 0;
 // skips the start-of-turn moment diverges only AFTER the first boundary (Replay.h),
 // so a single-turn log could not catch the defect the fixture exists to catch.
 //
-// 14 IS SLACK, NOT THE LENGTH OF THE MATCH. On the shipped scenario the match ends
-// inside turn 11 -- `turn.running` goes false, tier leaves InProgress and side 0
-// wins -- and the loop below stops there, so the emitted log is 64 commands and 14
-// is never reached. The bound is deliberately above that number rather than equal
-// to it: at a bound equal to the match length, a rule or table change that made the
-// game one turn longer would silently emit a TRUNCATED fixture, and every check
-// below would still pass on it, because they all compare this builder against
-// itself. Slack is what makes truncation impossible rather than merely unlikely.
+// 48 IS DERIVED FROM THE TURN CAP, NOT FROM THE MATCH. This counts SIDE-turns, not
+// game turns: on the shipped scenario the widened log uses 13 of them and ends at
+// game turn 7 -- `turn.running` goes false, tier leaves InProgress and side 0 still
+// wins -- so the emitted log is 169 commands and 48 is never reached.
+//
+// The bound was 14 while the log used 11, which left one side-turn of slack, and
+// slack measured against today's match is the wrong quantity. `turnCap` is 20 GAME
+// turns, so no match on this scenario can exceed 40 side-turns however the tables
+// move; 48 is above that ceiling by construction. At a bound near the match length,
+// a rule or table change that made the game longer would silently emit a TRUNCATED
+// fixture and every check below would still pass on it, because they all compare
+// this builder against itself.
 //
 // The consequence of playing to the end, and it is the point: the in-engine replay
 // T-INT-02 runs crosses the victory path and the MatchOver transition, not just the
-// mid-match moves. Two command kinds are still unexercised and no constant here can
-// change that -- `AiCommandKind` is {Build, Move, Attack, EndTurn}, so this producer
-// cannot emit a Capture at all, and Build never becomes affordable on this scenario.
-// The command surface T-INT-03 asserts over is reached by submitting commands
-// in-engine, not by replaying this file.
-static const int kParityTurns = 14;
+// mid-match moves. The log now carries all five §4.9 command kinds -- Move 49,
+// Attack 74, Build 22, Capture 12, EndTurn 12 -- Build because `aiViewOf` supplies
+// the buildlist §2.9 leaves to the caller, and Capture because `appendAiTurn`
+// appends one per side per turn, the AI's enum having no Capture member. The command
+// surface T-INT-03 asserts over is still reached by submitting commands in-engine
+// and not by replaying this file.
+static const int kParityTurns = 48;
 
 // `rulesCommit` and `dataHash` are §4.10 header strings that Save.h defines as
 // CALLER-SUPPLIED and never recomputes -- no module in this repo computes a digest
@@ -765,8 +823,8 @@ int main(int argc, char** argv) {
     std::printf("         that landed at UE 0897cb5 replays data/parity_fixture.save\n");
     std::printf("         through the vendored modules and compares its own canonical\n");
     std::printf("         state hash against the one that file carries. What this build\n");
-    std::printf("         supplies to that comparison is\n");
-    std::printf("         its headless half -- the fixture and the hash it records --\n");
+    std::printf("         supplies to that comparison is its headless half -- the\n");
+    std::printf("         fixture and the hash it records --\n");
     std::printf("         and GATE-REPLAY-FIXTURE above is what keeps them fresh, so a\n");
     std::printf("         stale fixture cannot reach the in-engine side quietly.\n");
     std::printf("NOT RUN  T-SAVE-07 harness compatibility (a Balance Analyst self-play log\n");
