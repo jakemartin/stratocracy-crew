@@ -5,9 +5,8 @@
 // T-SAVE-01/02/03/05/06. `T-SAVE-06` asserts the hash is identical across the
 // HEADLESS and IN-ENGINE builds; it is marked † in §4.11 and asserted jointly with
 // T-INT-02, which replays IN-ENGINE -- so it cannot close in a headless build, and
-// it is printed by name at the end rather than folded into the tally. It has since
-// closed IN THE EDITOR PASS, at UE 0897cb5, together with T-INT-02; the reason this
-// comment used to give -- that T-INT-02 needed a vendored replayer a ruling
+// it is printed by name at the end rather than folded into the tally. The reason
+// this comment used to give -- that T-INT-02 needed a vendored replayer a ruling
 // deferred -- is spent, Save and Replay having been vendored at f5fdb69. The four
 // this suite closes are T-SAVE-01, 02, 03 and 05.
 //
@@ -762,12 +761,11 @@ int main(int argc, char** argv) {
     std::printf("NOT RUN  T-SAVE-06 stateHash stability across the headless and in-engine\n");
     std::printf("         builds. §4.11 marks it †, it is asserted JOINTLY with T-INT-02,\n");
     std::printf("         which replays IN-ENGINE -- so no headless build closes it, and\n");
-    std::printf("         this one does not run the ID. It is NOT RUN here and NOT open:\n");
-    std::printf("         it CLOSED in the editor pass at UE 0897cb5, together with\n");
-    std::printf("         T-INT-02, where the §4.9 part 2 bridge replays\n");
-    std::printf("         data/parity_fixture.save through the vendored modules and\n");
-    std::printf("         compares its own canonical state hash against the one that\n");
-    std::printf("         file carries. What this build supplies to that comparison is\n");
+    std::printf("         this one does not run the ID. It is NOT RUN here. The bridge\n");
+    std::printf("         that landed at UE 0897cb5 replays data/parity_fixture.save\n");
+    std::printf("         through the vendored modules and compares its own canonical\n");
+    std::printf("         state hash against the one that file carries. What this build\n");
+    std::printf("         supplies to that comparison is\n");
     std::printf("         its headless half -- the fixture and the hash it records --\n");
     std::printf("         and GATE-REPLAY-FIXTURE above is what keeps them fresh, so a\n");
     std::printf("         stale fixture cannot reach the in-engine side quietly.\n");

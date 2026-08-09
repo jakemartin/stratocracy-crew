@@ -34,8 +34,7 @@ headless one.** §4.9's own Acceptance line makes the split:
   (presentation statelessness) are the editor pass, so **none of them runs in this
   build** — that is a property of where they live, not of anything being absent.
   **T-INT-02 and T-INT-03 have since run and passed** in the editor pass at UE
-  `0897cb5`, where §4.9 part 2's bridge landed; `T-SAVE-06` closed jointly with
-  `T-INT-02` there. **T-INT-05 has not run**, and what it lacks is the real
+  `0897cb5`, where §4.9 part 2's bridge landed. **T-INT-05 has not run**, and what it lacks is the real
   Stratocracy widgets it asserts over.
 
 **THE LEDGER ROW THEREFORE DOES NOT FLIP.** Q29 requires the full acceptance set
@@ -238,7 +237,7 @@ would put a green T-INT-01 beside a vendoring that never happened.
 - **The canonical state hash HAS SINCE BEEN BUILT**, as §4.11 **row 10**'s part
   (b) — `cpp_reference/Replay.h`, where §4.10 defines it. T-INT-02 and T-INT-03
   therefore have a subject, and both have since **run and passed** in the editor
-  pass at UE `0897cb5`; `T-SAVE-06` closed jointly with `T-INT-02` there. The
+  pass at UE `0897cb5`. The
   `stateHash` in `Driver.h` is the driver's own debug digest (`GATE-DRV-06`) and
   is a different thing from both.
 - **No acceptance ID is minted**, and none of §4.5's counts moves on the build

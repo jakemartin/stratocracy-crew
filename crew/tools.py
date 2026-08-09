@@ -182,8 +182,8 @@ WEEK1_ROWS = {
         "stem": "test_balance_runner",
         # ONE acceptance ID closes here — T-SAVE-07, in three clauses. T-SAVE-06 does
         # not, and the reason is now that this suite is HEADLESS rather than that
-        # anything is missing: it is row 10's only †, is asserted jointly with
-        # T-INT-02, and both closed in the editor pass at UE 0897cb5. Nothing headless
+        # anything is missing: it is row 10's only †, and is asserted jointly with
+        # T-INT-02. Nothing headless
         # can close them, which is what † and "jointly" meant all along.
         # GATE-BALANCE-* mint no acceptance ID, on the GATE-SAVE-PARSE and
         # GATE-REPLAY-* precedent.
@@ -478,10 +478,10 @@ def certify_week1_fn() -> dict:
             "fed8ae9); what they still lack are the real Stratocracy widgets they "
             "assert over. Row 2 no longer shares this posture — its set is complete.",
             "T-SAVE-06 — stateHash stability across the headless and in-engine builds. "
-            "§4.11 marks it †, and it is asserted jointly with T-INT-02. It is no "
-            "longer uncovered: BOTH closed in the editor pass at UE 0897cb5, where the "
-            "§4.9 part 2 bridge replays data/parity_fixture.save in-engine and compares "
-            "its own canonical state hash against the one that file carries. Every "
+            "§4.11 marks it †, and it is asserted jointly with T-INT-02. The bridge "
+            "that landed at UE 0897cb5 replays data/parity_fixture.save in-engine and "
+            "compares its own canonical state hash against the one that file carries. "
+            "Every "
             "blocker this entry used to name is gone — the in-editor Automation harness "
             "landed at UE fed8ae9, §4.10's canonical state hash was built by part (b), "
             "and the replayer was vendored at f5fdb69, which retired the ruling that "
@@ -832,8 +832,8 @@ def run_integration_gate_fn(ue_path: str | None = None) -> dict:
                  "Acceptance) and DID NOT RUN HERE — this gate is headless and cannot "
                  "run any of them. That is now the ONLY thing this gate can say about "
                  "them: T-INT-02 and T-INT-03 have since RUN AND PASSED in the editor "
-                 "pass at UE 0897cb5, where the §4.9 part 2 bridge landed, and "
-                 "T-SAVE-06 closed jointly with T-INT-02 there. T-INT-05 is the one "
+                 "pass at UE 0897cb5, where the §4.9 part 2 bridge landed. "
+                 "T-INT-05 is the one "
                  "still uncovered, and what it lacks is the real Stratocracy widgets it "
                  "asserts over. Row 9 cannot flip on this gate alone — it never could, "
                  "and whether it flips now is a question for the ledger and not for "

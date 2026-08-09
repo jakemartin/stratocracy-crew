@@ -60,7 +60,7 @@ way it composes into `T-SAVE-02`.
 
 **Acceptance:** `T-SAVE-07`. `T-SAVE-06` does not run here — it is row 10's only `†`, is
 asserted jointly with `T-INT-02`, and both are in-engine, which no suite in this repo
-is. Both have since **closed**, in the editor pass at UE `0897cb5`. The blocker this
+is. The blocker this
 line used to name is spent: the replayer `T-INT-02` needs in-engine was vendored at
 `f5fdb69`, which retired the ruling that deferred it.
 

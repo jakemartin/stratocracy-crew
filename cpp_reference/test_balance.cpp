@@ -325,7 +325,7 @@ int main() {
     std::printf("\nNOT RUN  T-SAVE-06 — stateHash stability across the headless and "
                 "in-engine builds. It is row 10's only †, is asserted jointly with "
                 "T-INT-02, and both are in-engine, which this suite is not. NOT RUN "
-                "here and NOT open: both CLOSED in the editor pass at UE 0897cb5. The "
+                "here. The "
                 "blocker this line used to name is spent — the VENDORED replayer "
                 "T-INT-02 needs was vendored at f5fdb69, retiring the deferring "
                 "ruling.\n");

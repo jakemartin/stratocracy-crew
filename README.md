@@ -393,8 +393,8 @@ is in the spec.
 
 **`T-INT-02`, `T-INT-03` and `T-INT-05` are the editor pass and do not run in this
 gate**, which is headless. **`T-INT-02` and `T-INT-03` have since run and passed**
-in the editor pass at UE `0897cb5`, where §4.9 part 2's bridge landed and
-`T-SAVE-06` closed jointly with `T-INT-02`. **`T-INT-05` has not run**, and what it
+in the editor pass at UE `0897cb5`, where §4.9 part 2's bridge landed.
+**`T-INT-05` has not run**, and what it
 lacks is the real Stratocracy widgets it asserts over — so the ledger row still
 does **not** flip, rows 7 and 8's posture. (Row 2's has since changed: its set is
 complete.) The sentence this paragraph used to carry — that the module is *"not

@@ -389,7 +389,7 @@ int main() {
     std::printf("NOT RUN  T-SAVE-06 stateHash stability across the headless and in-engine\n");
     std::printf("         builds. Marked † in §4.11 and asserted jointly with T-INT-02, so\n");
     std::printf("         it closes in the editor pass and in no headless build. It is NOT\n");
-    std::printf("         RUN here and NOT open: it CLOSED at UE 0897cb5, with T-INT-02.\n");
+    std::printf("         RUN here.\n");
     std::printf("         Both blockers this line used to name are gone -- the canonical\n");
     std::printf("         state hash was built by part (b), and the in-editor Automation\n");
     std::printf("         harness landed at UE fed8ae9.\n");

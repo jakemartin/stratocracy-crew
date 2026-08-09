@@ -9,9 +9,8 @@ borrowed as `RulesTables`.
 
 **Acceptance.** `T-SAVE-01`, `T-SAVE-02`, `T-SAVE-03`, `T-SAVE-05` close here.
 `T-SAVE-06` **does not close here** — §4.11 marks it `†` and it is asserted jointly
-with `T-INT-02`, which replays in-engine, so no headless build closes it. It has
-since **closed**, with `T-INT-02`, in the editor pass at UE `0897cb5`. Both blockers
-this line used to name are gone: the in-editor Automation harness landed at UE
+with `T-INT-02`, which replays in-engine, so no headless build closes it. Both
+blockers this line used to name are gone: the in-editor Automation harness landed at UE
 `fed8ae9`, and the **vendored** replayer `T-INT-02` needs was vendored at `f5fdb69`,
 retiring the ruling that deferred it. What this build owes that closure is its
 headless half — `data/parity_fixture.save` and the hash it records — which

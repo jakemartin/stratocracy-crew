@@ -45,8 +45,7 @@ each has a reason that is not "we ran out of time":
   or apply a prefix. Part (b).
 - **T-SAVE-06** is the in-editor half of the parity pair, marked **`†`** in
   §4.11 and asserted jointly with `T-INT-02`, so no headless build can close it.
-  It has since **closed** — in the editor pass at UE `0897cb5`, together with
-  `T-INT-02`. Both blockers this entry used to name are gone: the canonical state
+  Both blockers this entry used to name are gone: the canonical state
   hash was built when part (b) landed and defined it, and the in-editor Automation
   harness landed at UE `fed8ae9`.
 - **T-SAVE-07** needs row 6's self-play logs. Part (c), week 4.
