@@ -358,9 +358,16 @@ static const int kParityFirstSide = 0;
 // mid-match moves. The log now carries all five §4.9 command kinds -- Move 49,
 // Attack 74, Build 22, Capture 12, EndTurn 12 -- Build because `aiViewOf` supplies
 // the buildlist §2.9 leaves to the caller, and Capture because `appendAiTurn`
-// appends one per side per turn, the AI's enum having no Capture member. The command
-// surface T-INT-03 asserts over is still reached by submitting commands in-engine
-// and not by replaying this file.
+// appends one per side per turn, the AI's enum having no Capture member.
+//
+// T-INT-03 CONSUMES THIS FILE TOO, and an earlier version of this comment said it
+// did not. It has three clauses. The first two build one illegal command in the
+// test and hand it to the bridge's command surface, reaching that surface by
+// SUBMITTING and not by replaying -- which is the narrow thing the old sentence
+// was true of. Its third clause, "no partial application", is the one with teeth,
+// and it replays THIS FILE'S command log with an illegal command appended, so the
+// log is the legal prefix that must be left unapplied. Widening the file changed
+// that prefix: what T-INT-03 now leaves unapplied includes Build and Capture.
 static const int kParityTurns = 48;
 
 // `rulesCommit` and `dataHash` are §4.10 header strings that Save.h defines as
