@@ -76,6 +76,10 @@ answer and leaves the term undefined; none adds a rule the GDD does not have.
    and gives no ratio, no period and no rule. The module takes the list as a
    caller-supplied parameter and applies Q9's priority among its affordable
    members. Inventing a ratio would be a balance rule the GDD has not written.
+   **The Director has since written one** — a per-type population cap, change
+   request 3 below. This reading stays correct as the module's position until
+   that lands: the list is still data, and the cap is data the caller supplies
+   too, not a ratio the module invents.
 2. **"Undefended"** (T-AI-03) = no enemy stands on the objective **and** none is
    adjacent to it. Occupancy alone would leave the word doing no work, since
    `Move.h` already refuses to enter an occupied hex.
@@ -100,9 +104,11 @@ difficulty tier at all. Must compile with a plain C++17 compiler.
 
 ## Change requests for the Director
 
-Both are pre-existing consequences of rows landing in order, surfaced by row 6
-because the AI is the first caller to exercise them. Neither is worked around
-silently.
+The first two are pre-existing consequences of rows landing in order, surfaced by
+row 6 because the AI is the first caller to exercise them. Neither is worked
+around silently. The third is not that class and is not a question: it is a
+ruling already made, recorded here so the work has a home and a shape before
+anyone writes it.
 
 1. **§2.7's "one build per factory per turn" is enforced only as "one *pending*
    build per factory".** That was the whole of it while no module owned the turn
@@ -122,6 +128,65 @@ silently.
    "if an enemy is within reach **after moving**, attack". Whether row 5 gains a
    second flag, or `hasActed` is defined to mean only the act step with movement
    tracked separately, is a Director call.
+3. **Build variety — a per-type population cap. RULED 2026-08-19; this one wants
+   building, not deciding.** §2.9's "mostly Infantry, an occasional Tank" has no
+   representation anywhere in this module. `chooseBuild` returns the cheapest
+   affordable buildlist entry, and there is no Fame level at which Tank (300) is
+   affordable and Infantry (100) is not, so **with Infantry in the list the Tank
+   entry is unreachable at every Fame level** and "an occasional Tank" is not an
+   observable outcome. `AiState::buildlist` compounds it: `chooseBuild` reads it
+   as a set, so neither order nor multiplicity expresses anything, and a caller
+   told the mix is theirs to decide holds a container that cannot carry one.
+
+   The ruling: **a side may not have more than N units of a type on the board at
+   once.** At its cap a type is ineligible; `buildPriorityLess` orders whatever
+   remains eligible and affordable; when nothing does, `chooseBuild` returns -1
+   as it does today and the side accrues Fame until a casualty frees the cap or
+   the dearer unit becomes affordable.
+
+   It costs this module less than it looks. **The saving behaviour needs no
+   code** — `nextCommand`'s economy block already reads `if (defIndex < 0)
+   continue;`, so an empty eligible set is a turn that spends nothing; hoarding
+   is emergent from the cap rather than a second mechanism. **Determinism is
+   untouched**: a population count is state, not randomness, so no RNG, no
+   clock, no cursor, and nothing carried between calls — `T-AI-06` and the
+   replay fixtures stand. **Q9 is untouched**: the cap filters eligibility and
+   the comparator still orders what survives, so the ruled Infantry > Recon >
+   Artillery > Tank priority is neither reversed nor reinterpreted. And **the AI
+   still cheats at nothing**: `AiState::units` already carries `side` and
+   `defIndex`, and a unit count is the most player-visible fact on the board.
+
+   Three things the Director left to this module, in descending order of how
+   badly they bite:
+
+   - **The cap must count `economy.pending` alongside alive units.** The economy
+     block calls `chooseBuild` afresh for each held factory in canonical order
+     within one turn, and a queued build sits in `economy.pending` before it
+     becomes a unit. Counting only `units` puts 2 alive against a cap of 3 in
+     front of three factories, each sees room, and the board lands at 5. This is
+     a correctness requirement, not a choice, and it wants its own clause — a
+     single-factory fixture passes the bug.
+   - **Where the cap numbers live.** Buildlist multiplicity would carry them for
+     free and would finally give those duplicate entries a meaning
+     (`{Infantry, Infantry, Infantry, Tank}` reading as its own quota table),
+     with no change to `AiState`'s shape and none to the caller's. Against it:
+     every list anyone has already authored silently acquires caps equal to how
+     many times someone happened to type each entry. An explicit parallel cap
+     vector on `AiState`, in the idiom `buildlist` and `builtThisTurn` already
+     use, says what it means and can express "uncapped". **Recommended, with the
+     multiplicity reading noted as the cheaper alternative rather than hidden.**
+   - **§2.9's "spends Fame and replaces losses instead of hoarding" wants an
+     explicit note.** A cap makes the AI hoard. Bounded (it ends at the dearer
+     unit's cost or at the first casualty) and directed (it exists to reach the
+     Tank §2.9 asks for), so the reading is that the cap supplies the missing
+     half of §2.9 rather than contradicting it — but §2.9 is GDD text, and that
+     inference should be written down here rather than drawn by whoever
+     implements the cap.
+
+   Full investigation, including the byte-for-byte confirmation that this
+   module has not moved since it was vendored and the four design options
+   weighed before the ruling:
+   `Stratocracy/Tools/architect/evidence/upstream-chooseBuild-buildlist-ratio.md`.
 
 ## Acceptance
 
