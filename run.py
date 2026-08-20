@@ -10,11 +10,23 @@
 Always produces build/run_log.md, build/Combat.cpp, and build/balance_report.md, and
 never crashes: if the live crew errors (missing key, network, etc.) it falls back to the
 deterministic pipeline so there is always a runnable, gate-verified result.
+
+Exit code -- the verdict, machine-readable:
+
+    0  every gate that ran, passed.
+    1  a gate ran and FAILED.
+    2  a gate could not run, so nothing was measured (no C++ compiler on PATH, no UE
+       checkout for row 9). Never folded into 0: an unmeasured gate is not a passed one.
+    3  an exception escaped the run itself.
+
+Not crashing is not the same as passing, and `--offline` on a machine with no compiler is
+the case that separates them.
 """
 from __future__ import annotations
 
 import os
 import sys
+import traceback
 from pathlib import Path
 
 # Load ANTHROPIC_API_KEY (and any other vars) from a local .env if present.
@@ -53,6 +65,83 @@ def _flush_log(header: str) -> None:
                         + "\n".join(_lines) + "\n```\n", encoding="utf-8")
 
 
+# --- The verdict, and the exit code derived from it ------------------------------- #
+#
+# `main` used to end in a bare `return 0`. Measured 2026-08-20: `python run.py --offline`
+# on a machine with no C++ compiler printed "[stop] No usable C++ compiler on PATH",
+# wrote NEITHER acceptance record, and exited 0 -- so any CI step, shell `&&`, or reader
+# who trusts the exit code read "the crew certified the build" off a run that had not
+# compiled a single line. A gate that cannot run must not be able to report a pass.
+#
+# So the exit code is DERIVED from what the stages returned, never typed. Three states,
+# because two would have to lie about one of them: passed, failed, and did-not-run.
+
+EXIT_OK, EXIT_FAILED, EXIT_NOT_RUN, EXIT_CRASHED = 0, 1, 2, 3
+
+PASSED, FAILED, NOT_RUN = "passed", "FAILED", "did not run"
+
+_verdicts: list[tuple[str, str, str]] = []
+
+
+def _verdict_of(result: dict) -> tuple[str, str]:
+    """Read a stage's own return value as (verdict, why). Two shapes are in play.
+
+    The offline/week-1 stages return {"status", "gate_passed", ...}; the integration gate
+    returns {"ran", "passed", ...} and sets ran=False when it SKIPS for want of a subject.
+    Both already distinguish "could not run" from "ran and failed" -- `main` was simply
+    discarding the distinction. Nothing here re-decides a verdict a stage has issued.
+    """
+    if "ran" in result:  # integration gate
+        if not result.get("ran"):
+            return NOT_RUN, result.get("summary", "skipped, nothing was checked")
+        # A gate can be partly gradeable: T-INT-01 holds while T-INT-04 has no compiler
+        # to run. A failure outranks a skip, but a skip never rounds down to a pass.
+        if result.get("failures"):
+            return FAILED, "failing: " + ", ".join(result["failures"])
+        if result.get("skipped"):
+            return NOT_RUN, "could not run: " + ", ".join(result["skipped"])
+        return (PASSED, "") if result.get("passed") else (FAILED, "gate did not pass")
+    status = result.get("status")
+    if status == "no_compiler":
+        return NOT_RUN, "no C++ compiler on PATH -- nothing was compiled or gated"
+    if status == "no_combat":
+        # Nothing in week 1 failed; week 1 was never graded, because the Combat.cpp
+        # every row links was not the certified one.
+        return NOT_RUN, result.get("provenance", "uncertified build/Combat.cpp")
+    if status != "ok":
+        return FAILED, f"stage reported status={status!r}"
+    return (PASSED, "") if result.get("gate_passed") else (FAILED, "gate did not pass")
+
+
+def record(stage: str, result: dict) -> dict:
+    """Register a stage's verdict and hand its result straight back to the caller."""
+    verdict, why = _verdict_of(result)
+    _verdicts.append((stage, verdict, why))
+    return result
+
+
+def _exit_code() -> int:
+    """The verdict of the whole run. Also LOGS it, so run_log.md and the exit code cannot
+    disagree -- the closing line and the number a script reads come from the same list."""
+    log("")
+    log("=" * 78)
+    if not _verdicts:
+        log("VERDICT: did not run -- no gate reported at all.")
+        log("=" * 78)
+        return EXIT_NOT_RUN
+    for stage, verdict, why in _verdicts:
+        log(f"VERDICT: {stage} -- {verdict}" + (f" ({why})" if why else ""))
+    log("=" * 78)
+    if any(v == FAILED for _, v, _ in _verdicts):
+        return EXIT_FAILED
+    # A run where something was skipped is incomplete, not green. `--week1` on a machine
+    # with no UE checkout passes rows 1-8 and never sees row 9; exiting 0 would report a
+    # coverage it did not have.
+    if any(v == NOT_RUN for _, v, _ in _verdicts):
+        return EXIT_NOT_RUN
+    return EXIT_OK
+
+
 def run_live() -> None:
     from crew.crew import build_crew
     from crew.tools import certify_build_fn, run_self_play_fn, IMPL
@@ -66,6 +155,7 @@ def run_live() -> None:
     # duel table — so run_log.md is complete, submittable proof on its own.
     log("=== Test Engineer certification (for the record) ===")
     g = certify_build_fn()
+    record("live crew certification", {"status": "ok", "gate_passed": g["accepted"]})
     log("[Test Engineer] certify_build -> " + g["summary"] + f" | accepted={g['accepted']}")
     for line in g["log"].splitlines():
         log("    " + line)
@@ -96,8 +186,25 @@ def run_week1_stage() -> dict:
     references and gated by the same real compile+run. Anything else would report a
     live authoring run that did not happen.
     """
+    # 11 of the 12 week-1 rows link build/Combat.cpp and none of them author it, so the
+    # stage is only gradeable if that file is the one the Test Engineer certified. Checked
+    # here rather than in `main` so it covers every caller of the stage, and checked
+    # before a single module is compiled so the reason is the first thing in the log
+    # instead of a row-1 BLOCK the reader has to work backwards from.
+    from crew.tools import combat_provenance_fn
+    prov = combat_provenance_fn()
+    if not prov["ok"]:
+        log("[stop] week 1 NOT RUN -- " + prov["reason"] + ".")
+        log("       11 of the 12 week-1 rows link build/Combat.cpp, so a failure in "
+            "them would be about Combat and not about week 1. Run "
+            "`python run.py --offline` (or --online) first to author and certify "
+            "Combat, then re-run --week1.")
+        return record("week 1 (rows 1-8 + 10a)",
+                      {"status": "no_combat", "gate_passed": False,
+                       "provenance": prov["reason"]})
+    log("[Test Engineer] combat provenance OK -- " + prov["reason"] + ".")
     from crew.offline import run_week1 as _rw
-    return _rw(log)
+    return record("week 1 (rows 1-8 + 10a)", _rw(log))
 
 
 def run_integration_stage() -> dict:
@@ -113,7 +220,7 @@ def run_integration_stage() -> dict:
     log("\n" + "=" * 78)
     log("ROW 9 — §4.9 integration, headless half (T-INT-01, T-INT-04)")
     log("=" * 78 + "\n")
-    r = run_integration_gate_fn()
+    r = record("row 9 integration", run_integration_gate_fn())
     log("[Test Engineer] " + r["summary"])
     for line in r["log"].splitlines():
         log("    " + line)
@@ -122,7 +229,7 @@ def run_integration_stage() -> dict:
 
 def run_offline() -> None:
     from crew.offline import run_offline as _ro
-    res = _ro(log)
+    res = record("combat pipeline", _ro(log))
     if res.get("status") != "ok":
         return  # no compiler / gate failed — offline already logged a clear reason
     from crew.tools import run_self_play_fn
@@ -190,17 +297,25 @@ def _log_artifacts(expected: list[str]) -> None:
 
 
 def main() -> int:
-    # Each run must re-earn both acceptance records; neither is ever inherited.
-    (BUILD / "acceptance.json").unlink(missing_ok=True)
-    (BUILD / "acceptance_week1.json").unlink(missing_ok=True)
     args = set(sys.argv[1:])
     force_offline = "--offline" in args
     force_online = "--online" in args
     week1_only = "--week1" in args
     integration_only = "--integration" in args
+
+    # A run re-earns the records IT CAN PRODUCE, and leaves the others alone. This used
+    # to delete both unconditionally, which meant `--week1` destroyed the combat
+    # certification -- the very record the provenance check above needs to read, written
+    # by a `--offline` run that had done nothing wrong. Deleting another run's evidence
+    # is not the same discipline as refusing to inherit your own.
+    if not (week1_only or integration_only):
+        (BUILD / "acceptance.json").unlink(missing_ok=True)
+    if not integration_only:
+        (BUILD / "acceptance_week1.json").unlink(missing_ok=True)
     have_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
 
     header = ""
+    crashed = False
     try:
         if integration_only:
             run_integration_stage()
@@ -221,15 +336,28 @@ def main() -> int:
         else:
             run_offline()
             header = "offline deterministic pipeline"
+    except Exception:
+        # The stage raised. Previously this escaped `main` and Python exited 1 with a
+        # traceback on stderr and NOTHING in run_log.md -- the record went quiet on the
+        # one run that most needed explaining. Put the traceback in the log, and give the
+        # crash its own code so it is not confused with a gate that ran and failed.
+        crashed = True
+        header = (header or "run") + " (crashed)"
+        log("")
+        log("[crash] the run raised before finishing:")
+        for ln in traceback.format_exc().rstrip().splitlines():
+            log("    " + ln)
     finally:
         # Inside the `finally` and BEFORE the flush, so the record carries the artifact
         # report too. It used to sit after `_flush_log`, which meant the one place a
         # reader goes back to -- run_log.md -- was the one place that never had it.
         _log_artifacts(EXPECTED_INTEGRATION if integration_only else
                        EXPECTED_WEEK1 if week1_only else EXPECTED_FULL)
+        code = EXIT_CRASHED if crashed else _exit_code()
+        log(f"exit code: {code}")
         _flush_log(header or "run")
 
-    return 0
+    return code
 
 
 if __name__ == "__main__":

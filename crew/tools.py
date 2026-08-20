@@ -314,16 +314,86 @@ def certify_build_fn() -> dict:
     balance). The Systems Engineer's own run_test_gate is dev-time self-testing; it never
     certifies for release."""
     r = run_test_gate_fn()
+    # WHICH BYTES were certified, not merely that a certification happened. 11 of the
+    # 12 WEEK1_ROWS link build/Combat.cpp (every row but `save`) and none of them author
+    # it, so without this the record vouches for a filename and the file underneath it
+    # can be anything. See `combat_provenance_fn`.
+    impl = BUILD / IMPL
     record = {
         "accepted": bool(r["passed"]),
         "tests": "T-COMBAT-01..10, T-REPAIR-01..07",
         "failures": r.get("failures", []),
         "summary": r["summary"],
         "certified_by": "Test Engineer",
+        "impl": IMPL,
+        "implSha256": (hashlib.sha256(impl.read_bytes()).hexdigest()
+                       if impl.is_file() else None),
     }
     ensure_workspace()
     (BUILD / ACCEPT).write_text(json.dumps(record, indent=2), encoding="utf-8")
     return {**r, "accepted": record["accepted"]}
+
+
+def combat_provenance_fn() -> dict:
+    """Is build/Combat.cpp the source the Test Engineer certified? Answered by hash.
+
+    WHY THIS EXISTS, MEASURED 2026-08-20. `run.py --week1` was run on a build/ left
+    behind by an interrupted `--offline`: that run had authored the deliberately-BUGGY
+    pass-1 Combat.cpp and stopped at "no C++ compiler" before pass 2 could correct it.
+    11 of the 12 WEEK1_ROWS link Combat.cpp and NONE of them author it, so row 1 came
+    back `GATE BLOCK - failing: T-HEX-06` -- a true report of a real link-time fact, and
+    a completely misleading one about week 1, whose own modules were fine. It cost a run
+    to diagnose, and the log said nothing that would point at the cause. (`save` is the
+    one row that does not link it, which narrows the blast radius and does not change
+    what the stage's verdict is worth: a run where 11 rows are ungradeable is not a
+    week-1 result.)
+
+    T-HEX-06 asserts that combat's range checks consume the hex distance function, so
+    it links Combat.cpp BY DESIGN and that is not the defect. The defect is that
+    build/ is not emptied between runs and nothing tied the linked file to a verdict.
+
+    The check is a hash comparison against `implSha256` in the acceptance record, so
+    it pins the exact bytes and is indifferent to how they were authored -- the live
+    crew's agent-written Combat.cpp passes on the same terms as the offline path's.
+    Comparing against the bundled reference instead would have blocked every live run.
+    """
+    impl = BUILD / IMPL
+    rec_path = BUILD / ACCEPT
+    if not impl.is_file():
+        return {"ok": False, "reason": f"build/{IMPL} does not exist"}
+    if not rec_path.is_file():
+        return {"ok": False,
+                "reason": (f"build/{ACCEPT} does not exist -- no Test Engineer "
+                           f"certification stands for the build/{IMPL} on disk")}
+    try:
+        rec = json.loads(rec_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {"ok": False, "reason": f"build/{ACCEPT} is unreadable: {exc}"}
+    if rec.get("accepted") is not True:
+        return {"ok": False,
+                "reason": f"build/{ACCEPT} records accepted={rec.get('accepted')!r}"}
+    want = rec.get("implSha256")
+    if not want:
+        return {"ok": False,
+                "reason": (f"build/{ACCEPT} carries no implSha256 -- it was written "
+                           "before this field existed and cannot vouch for any bytes")}
+    got = hashlib.sha256(impl.read_bytes()).hexdigest()
+    if got != want:
+        detail = ""
+        # Name the trap that produced this, when it IS that trap. The buggy reference is
+        # bundled, so recognising it costs one hash and saves the next reader the hour it
+        # cost the first one.
+        buggy = REF / "Combat.buggy.cpp"
+        if buggy.is_file():
+            if hashlib.sha256(buggy.read_bytes()).hexdigest() == got:
+                detail = (" -- and it is byte-identical to cpp_reference/Combat.buggy.cpp, "
+                          "the deliberately-hallucinated pass-1 impl, so an earlier run "
+                          "stopped between pass 1 and pass 2")
+        return {"ok": False,
+                "reason": (f"build/{IMPL} is not the certified source: record says "
+                           f"{want[:12]}, file is {got[:12]}{detail}")}
+    return {"ok": True,
+            "reason": f"build/{IMPL} matches the certified sha256 {got[:12]}"}
 
 
 # --------------------------------------------------------------------------- #
@@ -606,11 +676,26 @@ def run_integration_gate_fn(ue_path: str | None = None) -> dict:
     witness an engine header that vendoring introduced.
     """
     lines: list[str] = []
-    results: list[tuple[str, bool, str]] = []
+    # (ident, verdict, detail), verdict in PASS / FAIL / SKIP. THREE states, because two
+    # cannot hold an invariant whose INSTRUMENT is absent. §4.9 says of T-INT-04 that
+    # "the gate run itself is the assert" -- so when the compile cannot be run there is
+    # no assert to grade, and the gate knows nothing about engine deps either way.
+    # Calling that FAIL overstated the gate's knowledge (it read as "the vendored sources
+    # depend on engine headers", which was never measured); calling it PASS would be the
+    # far worse error. The point of the third state is that neither is available.
+    PASS, FAIL, SKIP = "PASS", "FAIL", "SKIP"
+    results: list[tuple[str, str, str]] = []
 
     def check(ident: str, ok: bool, detail: str) -> None:
-        results.append((ident, ok, detail))
-        lines.append(f"{'PASS' if ok else 'FAIL'}  {ident} {detail}")
+        results.append((ident, PASS if ok else FAIL, detail))
+        lines.append(f"{PASS if ok else FAIL}  {ident} {detail}")
+
+    def skip(ident: str, detail: str) -> None:
+        """Record that the invariant COULD NOT BE ASSERTED here. Never a pass, and not a
+        failure of the thing under test -- a failure to test it. The caller must be able
+        to tell the two apart, which is why `skipped` is returned as its own list."""
+        results.append((ident, SKIP, detail))
+        lines.append(f"{SKIP}  {ident} {detail}")
 
     ue = find_ue_project(ue_path)
     if ue is None:
@@ -791,9 +876,10 @@ def run_integration_gate_fn(ue_path: str | None = None) -> dict:
     # ---- T-INT-04: no engine deps ------------------------------------------- #
     cc = find_compiler()
     if cc is None:
-        check("T-INT-04", False,
-              "no C++ compiler on PATH — the gate run IS the assert, so a gate that "
-              "cannot compile asserts nothing")
+        skip("T-INT-04",
+             "no C++ compiler on PATH — the gate run IS the assert, so a gate that "
+             "cannot compile asserts nothing. Install g++/clang++, or run from the "
+             "'x64 Native Tools Command Prompt for VS', and this becomes gradeable.")
     else:
         impls = sorted(p.name for p in dest.glob("*.good.cpp"))
         if not impls:
@@ -824,9 +910,15 @@ def run_integration_gate_fn(ue_path: str | None = None) -> dict:
                       f"no engine deps: {len(impls)} vendored implementations compile "
                       f"standalone under {os.path.basename(cc)}, outside UBT")
 
-    failures = [ident for ident, ok, _ in results if not ok]
-    passed = not failures
-    tally = f"{sum(1 for _, ok, _ in results if ok)}/{len(results)} passed"
+    failures = [ident for ident, v, _ in results if v == FAIL]
+    skipped = [ident for ident, v, _ in results if v == SKIP]
+    # `passed` is strict green: everything ran AND everything held. A run with a skip in
+    # it is not passed, and the caller reads `failures` and `skipped` to tell which of
+    # the two non-green states it is looking at.
+    passed = not failures and not skipped
+    tally = f"{sum(1 for _, v, _ in results if v == PASS)}/{len(results)} passed"
+    if skipped:
+        tally += f", {len(skipped)} could not run"
     lines.append("")
     lines.append("T-INT-02, T-INT-03 and T-INT-05 are the editor pass (§4.9 "
                  "Acceptance) and DID NOT RUN HERE — this gate is headless and cannot "
@@ -839,9 +931,19 @@ def run_integration_gate_fn(ue_path: str | None = None) -> dict:
                  "and whether it flips now is a question for the ledger and not for "
                  "this runner.")
     lines.append(tally)
-    summary = ("INTEGRATION GATE PASS — T-INT-01, T-INT-04" if passed
-               else f"INTEGRATION GATE BLOCK — failing: {', '.join(failures)}")
-    return {"ran": True, "passed": passed, "failures": failures,
+    if failures:
+        summary = f"INTEGRATION GATE BLOCK — failing: {', '.join(failures)}"
+        if skipped:
+            summary += f" (and could not run: {', '.join(skipped)})"
+    elif skipped:
+        # NOT the word "PASS", on a line a CI job greps for exactly that word. Nothing
+        # failed here, but not everything ran, and those are different verdicts.
+        summary = (f"INTEGRATION GATE INCOMPLETE — could not run: "
+                   f"{', '.join(skipped)}; nothing failed, and nothing is claimed "
+                   "about what was not run")
+    else:
+        summary = "INTEGRATION GATE PASS — T-INT-01, T-INT-04"
+    return {"ran": True, "passed": passed, "failures": failures, "skipped": skipped,
             "summary": f"{summary} ({tally})", "log": "\n".join(lines)}
 
 
