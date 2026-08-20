@@ -227,9 +227,9 @@ def run_integration_stage() -> dict:
     return r
 
 
-def run_offline() -> None:
+def run_offline(reason: str = "") -> None:
     from crew.offline import run_offline as _ro
-    res = record("combat pipeline", _ro(log))
+    res = record("combat pipeline", _ro(log, reason))
     if res.get("status") != "ok":
         return  # no compiler / gate failed — offline already logged a clear reason
     from crew.tools import run_self_play_fn
@@ -331,10 +331,13 @@ def main() -> int:
             except Exception as e:  # graceful degradation — never crash the submission
                 log(f"\n[warn] live crew failed ({type(e).__name__}: {e}). "
                     "Falling back to the deterministic pipeline.\n")
-                run_offline()
+                run_offline(f"live crew failed: {type(e).__name__}")
                 header = "offline (live crew fell back)"
         else:
-            run_offline()
+            # The two ways this branch is reached are different facts and are reported as
+            # different facts. `--offline` with a key present is not "no API key".
+            run_offline("--offline requested" if force_offline
+                        else "no ANTHROPIC_API_KEY")
             header = "offline deterministic pipeline"
     except Exception:
         # The stage raised. Previously this escaped `main` and Python exited 1 with a

@@ -13,9 +13,22 @@ from __future__ import annotations
 from . import tools
 
 
-def run_offline(log) -> dict:
-    log("MODE: offline deterministic pipeline (no API key) — the crew's spec→gate→"
-        "balance flow with bundled authorship.\n")
+def run_offline(log, reason: str = "") -> dict:
+    """`reason` is WHY this path was taken, and it is passed in rather than guessed.
+
+    This line read "(no API key)" unconditionally. Measured 2026-08-20 on a cold run: a
+    key WAS present in .env and offline was chosen because `--offline` was passed, so
+    run_log.md recorded a cause that was not the cause -- a permanent record asserting
+    something nobody checked, which is the same defect the exit codes and the gate
+    verdicts in this repo were fixed for a day earlier.
+
+    Only `main` knows which branch it took, so only `main` can say. Re-deriving it here
+    from the environment would get the fallback case wrong: the live crew can fail and
+    fall back WITH a valid key set, and an environment check would then blame the key.
+    """
+    log("MODE: offline deterministic pipeline"
+        + (f" ({reason})" if reason else "")
+        + " — the crew's spec→gate→balance flow with bundled authorship.\n")
 
     # --- Systems Engineer, pass 1: the hallucinated implementation --------------
     log("[Director -> Systems Engineer] spec/combat_spec.md handed over.")
