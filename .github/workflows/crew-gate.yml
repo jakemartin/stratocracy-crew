@@ -1,0 +1,100 @@
+# Runs the crew's own merge gate — `run.py --week1`, §4.11 rows 1-8 plus the driver, then
+# row 9's headless half — on every push and pull request.
+#
+# WHY THE VERDICT IS READ FROM A RECORD AND NOT FROM AN EXIT CODE. `run.py --week1` EXITS 0
+# WHEN IT CANNOT RUN THE GATE AT ALL. Measured 2026-08-20 on a shell with no C++ compiler:
+# the run printed `[stop] No usable C++ compiler on PATH`, then
+# `INTEGRATION GATE BLOCK — failing: T-INT-04`, and returned 0. A job of the shape
+# `run: python run.py --week1` would be green on a run that asserted nothing — which is the
+# same defect shape this project has already paid for in four of its guards. So the run is
+# invoked for its artifacts, and `gate_ci_verdict.py` grades those artifacts and owns the
+# exit code. That script's own falsifiability is checked here before its verdict is trusted.
+#
+# WHAT A GREEN TICK MEANS HERE, stated because the difference is the whole value:
+#   - The headless C++ modules COMPILE and their invariants RUN on this runner (g++), and the
+#     pass-1 buggy-module controls FAILED first, so the green half is not vacuous.
+#   - `T-INT-01` and `T-INT-04` run for real, because the UE project is checked out as a
+#     sibling directory — `find_ue_project` looks for `../Stratocracy`, and without it the
+#     integration gate reports SKIPPED, which says in its own words that "nothing was checked
+#     and nothing is claimed". `gate_ci_verdict.py` treats that SKIP as a failure rather than
+#     as a pass, since a CI that silently stops covering T-INT-01 is exactly the guard-goes-
+#     inert shape.
+#   - `fetch-depth: 0` on this repo is load-bearing and not caution: T-INT-01 does not trust
+#     the vendoring manifest's own hashes. It re-derives the expected file set and every hash
+#     from THIS repository's history at `rulesCommit` via `git ls-tree` / `git show`, so a
+#     shallow clone would make it fail for a reason that has nothing to do with the tree.
+#
+# WHAT IT STILL CANNOT SEE. T-INT-02, T-INT-03 and T-INT-05 are the in-editor half of §4.9
+# and cannot run on a hosted runner; T-DATA-05, T-UI-03 and T-UI-04 are in-editor Automation
+# for the same reason. The gate names each of them as not-covered in its own output, and this
+# workflow does not claim otherwise.
+
+name: crew gate
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      # This repo lands in a named directory rather than at the workspace root, because
+      # `find_ue_project` resolves the UE project as a SIBLING (`ROOT.parent / "Stratocracy"`).
+      - uses: actions/checkout@v5
+        with:
+          path: stratocracy-crew
+          fetch-depth: 0
+
+      # The UE project supplies `Source/StratRules/` — the vendored copy T-INT-01 checks and
+      # T-INT-04 compiles. The directory name is exact-case on purpose; `find_ue_project`
+      # looks for `Stratocracy`, and a Linux runner is case-sensitive where the authors'
+      # Windows machines are not.
+      - uses: actions/checkout@v5
+        with:
+          repository: jakemartin/stratocracy
+          path: Stratocracy
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      # REFUSE RATHER THAN PASS VACUOUSLY. The whole reason this file grades a record instead
+      # of an exit code is a compiler-less run that reported success, so a runner image that
+      # quietly lost g++ must stop the job here, loudly, rather than downstream in a way that
+      # reads like a rules failure.
+      - name: a C++ compiler must exist before anything claims to have compiled
+        working-directory: stratocracy-crew
+        run: g++ --version
+
+      # THE TOOL IS CHECKED BEFORE ITS VERDICT IS TRUSTED, the same discipline the UE repo's
+      # banner sweep runs under. 11 inline fixtures, each proving one of the six checks can
+      # FAIL — including one that carries the log's real `[Test Engineer] ` speaker prefix,
+      # which is the shape the first version of the classifier read wrong.
+      - name: verdict-reader self-test (prove the tool can fail)
+        working-directory: stratocracy-crew
+        run: python gate_ci_verdict.py --self-test
+
+      # Invoked for its artifacts. Its exit code is deliberately not the gate — see the header.
+      - name: run the week-1 gate
+        working-directory: stratocracy-crew
+        run: python run.py --week1
+
+      - name: grade the run
+        working-directory: stratocracy-crew
+        run: python gate_ci_verdict.py
+
+      # The log is the evidence for whichever way the grade went, so it is kept on both paths.
+      # A failure here that nobody can read is a failure someone will re-run instead of fix.
+      - name: keep the run log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crew-gate-run-log
+          path: |
+            stratocracy-crew/build/run_log.md
+            stratocracy-crew/build/acceptance_week1.json
+          if-no-files-found: warn
