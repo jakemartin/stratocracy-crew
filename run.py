@@ -135,6 +135,60 @@ def run_offline() -> None:
     run_week1_stage()
 
 
+# The artifact each mode is SUPPOSED to leave behind. Declared rather than globbed, so a
+# module that silently stopped writing one is visible -- but the closing line is derived
+# from the directory, never from this list. See `_log_artifacts`.
+EXPECTED_INTEGRATION = ["stratrules_obj", "run_log.md"]
+EXPECTED_WEEK1 = ["Hex.cpp", "Data.cpp", "Move.cpp", "Economy.cpp", "Turn.cpp", "Ai.cpp",
+                  "Scenario.cpp", "Ui.cpp", "Save.cpp", "Driver.cpp", "stratocracy_debug",
+                  "acceptance_week1.json", "run_log.md"]
+EXPECTED_FULL = ["Combat.cpp", "test_combat.cpp", "selfplay.cpp", "balance_report.md",
+                 "acceptance.json", "Hex.cpp", "Data.cpp", "Move.cpp",
+                 "acceptance_week1.json", "run_log.md"]
+
+
+def _found(name: str) -> str | None:
+    """The artifact's real filename in build/, or None. Tolerant of the platform suffix:
+    the driver is `stratocracy_debug` on POSIX and `stratocracy_debug.exe` on Windows."""
+    if (BUILD / name).exists():
+        return name
+    for alt in sorted(BUILD.glob(name + ".*")):
+        return alt.name
+    return None
+
+
+def _log_artifacts(expected: list[str]) -> None:
+    """Report what this run ACTUALLY left in build/, and name anything it did not.
+
+    THIS USED TO BE A TYPED STRING AND IT LIED. Measured 2026-08-20 on a run that stopped
+    at "no C++ compiler on PATH": the closing line still announced `acceptance_week1.json`,
+    which `main` deletes up front and only `certify_week1_fn` writes -- so the run named an
+    artifact it had just failed to produce, to a reader with no reason to doubt it. A list
+    of names is not evidence that the names exist; the directory is.
+
+    `run_log.md` is written moments after this by `_flush_log` and is reported as produced
+    on that basis -- the one name here that is a promise rather than an observation, and it
+    is said out loud rather than quietly counted as present.
+
+    WHAT "PRESENT" DOES AND DOES NOT MEAN. build/ is not emptied between runs, so a file
+    listed here may be one an EARLIER run left. The line says what is in the directory,
+    which is what it is worth. The two acceptance records are the exception and the
+    stronger reading: `main` deletes both before the run, so their presence does mean this
+    run earned them -- which is exactly why their ABSENCE was worth catching.
+    """
+    found, missing = [], []
+    for name in expected:
+        if name == "run_log.md":
+            found.append(name + " (written on exit)")
+            continue
+        real = _found(name)
+        (found if real else missing).append(real or name)
+    log(f"\nArtifacts in {BUILD}/ : " + (", ".join(found) if found else "(none)"))
+    if missing:
+        log("NOT PRODUCED by this run, and nothing here claims otherwise: "
+            + ", ".join(missing))
+
+
 def main() -> int:
     # Each run must re-earn both acceptance records; neither is ever inherited.
     (BUILD / "acceptance.json").unlink(missing_ok=True)
@@ -168,18 +222,13 @@ def main() -> int:
             run_offline()
             header = "offline deterministic pipeline"
     finally:
+        # Inside the `finally` and BEFORE the flush, so the record carries the artifact
+        # report too. It used to sit after `_flush_log`, which meant the one place a
+        # reader goes back to -- run_log.md -- was the one place that never had it.
+        _log_artifacts(EXPECTED_INTEGRATION if integration_only else
+                       EXPECTED_WEEK1 if week1_only else EXPECTED_FULL)
         _flush_log(header or "run")
 
-    if integration_only:
-        log(f"\nArtifacts in {BUILD}/ : stratrules_obj/, run_log.md")
-    elif week1_only:
-        log(f"\nArtifacts in {BUILD}/ : Hex.cpp, Data.cpp, Move.cpp, Economy.cpp, "
-            "Turn.cpp, Ai.cpp, Scenario.cpp, Ui.cpp, Save.cpp, Driver.cpp, "
-            "stratocracy_debug, acceptance_week1.json, run_log.md")
-    else:
-        log(f"\nArtifacts in {BUILD}/ : Combat.cpp, test_combat.cpp, selfplay.cpp, "
-            "balance_report.md, acceptance.json, Hex.cpp, Data.cpp, Move.cpp, "
-            "acceptance_week1.json, run_log.md")
     return 0
 
 
