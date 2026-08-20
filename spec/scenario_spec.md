@@ -137,6 +137,71 @@ you add a command, sweep the banner, the `help` body, the file-header comment an
 `GATE-DRV-*` IDs are **not** `T-*`. The driver is not a §4.7 stub, has no ledger
 row, and flips nothing.
 
+## Change requests for the Director
+
+There is one, and it is a question about the scope ruling at the top of this
+file rather than about anything the ruling decided correctly for row 7.
+
+1. **A second authored scenario, wanted for a reason outside row 7. FILED
+   2026-08-19; not decided here.** The scope ruling forbids authoring *Longwater
+   March* and *The Causeway* as scenario files, weighed against row 7's own costs
+   — two T-SCN-08 fixtures, T-SCN-09's asserting branch, one T-SCN-11 fixture,
+   and a ledger row held at *pending*. A downstream consumer now wants one for a
+   reason that ruling did not weigh, because it did not exist yet: the UE
+   project's content-independence precedent asks that an invariant not rest on a
+   single corpus. Two of its three axes — first side and buildlist — are
+   discharged. The **scenario** axis cannot move at all, because
+   `data/ferrum_crossing.json` is the only scenario that exists and the UE side
+   carries it as vendored certified bytes it may not edit.
+
+   **The consumer needs no code.** `UStratMatchSubsystem::ScenarioFile` is
+   already a configured path relative to the project directory, and every
+   automation clause that opens a scenario sets that string rather than compiling
+   one in. What is missing is the datum.
+
+   **The ask is a ruling, not a task:** does the content-independence need
+   license authoring *Longwater March* (§2.13.5, taken first because §2.13.7
+   orders *The Causeway* after it) ahead of §2.13.7's week-4 condition?
+   §2.13.7's four clauses are the Director's own test and are not argued around
+   here; whether week 4 is consumed by balance is not a fact either repo holds.
+
+   **If the answer is yes, one value is missing from the GDD and is the
+   Director's to state.** §2.13.5 gives an estimated match length (16–20 turns,
+   "frequently reaching the cap") but no `turnCap`, and §2.8 makes the cap
+   per-scenario data — 20 is *Ferrum Crossing*'s. Under this file's own "author
+   nothing" rule that number cannot be chosen by whoever transcribes.
+
+   **Everything else in §2.13.5 does transcribe, checked by script rather than by
+   eye:** the ASCII grid is 13 × 8 = 104 hexes; its glyph census (Plains 86 ·
+   Woods 4 · Mountains 4 · Towns 4 · Factories 6, no Water, no Bridge) is
+   identical to the distribution the section states in prose; every named
+   coordinate lands on the glyph it is named as; the grid is ρ-symmetric at all
+   104 hexes under ρ(c, r) = (12 − c, 7 − r), not only at the nine pairs listed;
+   all ten starting positions are on Plains, distinct, ρ-imaged seat to seat,
+   with both home factory hexes free; and the map names no terrain kind absent
+   from `data/terrain.csv`, so the tables do not move. `startingFame` follows
+   §2.7's 200 per side.
+
+   **Three consequences go with a yes, and none is free.** (a) *Longwater March*
+   declares `rot180` on an even row count, so **T-SCN-09's asserting branch would
+   run for the first time** — implementation surface this row deliberately does
+   not have today, not a fixture addition. (b) Row 7's *pending* ledger posture
+   was reasoned against the current scope; T-SCN-08 recovers fixture (b), and
+   whoever lands the map must restate the posture rather than inherit it. (c)
+   `sync_stratdata.py`'s `SCENARIOS` list is declared rather than globbed, so
+   vendoring the file downstream is an upstream edit plus a manifest entry under
+   `GATE-DATA-VENDOR`. And `scenarioHash` is produced by `strat::scenarioHash`,
+   never typed.
+
+   **One drafting trap for whoever transcribes:** §2.13.5's ASCII grid writes the
+   central Woods knot as `w`. It is **Woods, not Water** — that map has no Water
+   at all, and *Ferrum Crossing*'s grid trains the opposite reading.
+
+   Full investigation, including the git-blob measurement that the vendored copy
+   equals the current crew bytes and the list of what was deliberately not
+   verified:
+   `Stratocracy/Tools/architect/evidence/upstream-second-scenario.md`.
+
 ## Acceptance
 
 `T-SCN-01..07` in full. `T-SCN-08` on fixture (c) plus measure-and-report on the
