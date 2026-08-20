@@ -352,19 +352,43 @@ def combat_provenance_fn() -> dict:
     it links Combat.cpp BY DESIGN and that is not the defect. The defect is that
     build/ is not emptied between runs and nothing tied the linked file to a verdict.
 
-    The check is a hash comparison against `implSha256` in the acceptance record, so
-    it pins the exact bytes and is indifferent to how they were authored -- the live
-    crew's agent-written Combat.cpp passes on the same terms as the offline path's.
-    Comparing against the bundled reference instead would have blocked every live run.
+    WHAT COUNTS AS TRUSTWORTHY, and the ABSENT case is the one that matters. There are
+    two legitimate origins for build/Combat.cpp and the check accepts both:
+
+      * the acceptance record's `implSha256` -- the bytes the Test Engineer certified
+        this session, whoever authored them. A hash and not a diff against the bundled
+        reference, so the live crew's agent-written Combat passes on the same terms as
+        the offline path's; requiring reference equality would block every live run.
+      * cpp_reference/Combat.good.cpp -- the PREREQUISITE bytes `run_week1` places
+        itself when build/ has no Combat at all (§4.11: green at 5ffa8d6, a prerequisite
+        and not a week-1 work item). Refusing these would refuse the runner's own setup.
+
+    And an ABSENT Combat.cpp is fine, because that is exactly when `run_week1` places
+    the prerequisite. This function got that wrong on its first outing and CI caught it:
+    a clean checkout has no build/, so `--week1` refused a tree that had done nothing
+    wrong and had been green for two commits. A guard that fires on the healthy path is
+    worse than the hazard it guards -- the hazard cost one run to diagnose, and a guard
+    like that costs every run until someone deletes it.
     """
     impl = BUILD / IMPL
     rec_path = BUILD / ACCEPT
     if not impl.is_file():
-        return {"ok": False, "reason": f"build/{IMPL} does not exist"}
+        return {"ok": True,
+                "reason": (f"build/{IMPL} is absent, so run_week1 will place the "
+                           "prerequisite Combat.good.cpp -- nothing stale to inherit")}
+    got = hashlib.sha256(impl.read_bytes()).hexdigest()
+
+    good = REF / "Combat.good.cpp"
+    if good.is_file() and hashlib.sha256(good.read_bytes()).hexdigest() == got:
+        return {"ok": True,
+                "reason": (f"build/{IMPL} is the prerequisite cpp_reference/"
+                           f"Combat.good.cpp verbatim ({got[:12]})")}
+
     if not rec_path.is_file():
         return {"ok": False,
-                "reason": (f"build/{ACCEPT} does not exist -- no Test Engineer "
-                           f"certification stands for the build/{IMPL} on disk")}
+                "reason": (f"build/{ACCEPT} does not exist and build/{IMPL} is not the "
+                           "prerequisite reference -- no certification stands for the "
+                           "bytes on disk")}
     try:
         rec = json.loads(rec_path.read_text(encoding="utf-8"))
     except Exception as exc:
@@ -377,7 +401,6 @@ def combat_provenance_fn() -> dict:
         return {"ok": False,
                 "reason": (f"build/{ACCEPT} carries no implSha256 -- it was written "
                            "before this field existed and cannot vouch for any bytes")}
-    got = hashlib.sha256(impl.read_bytes()).hexdigest()
     if got != want:
         detail = ""
         # Name the trap that produced this, when it IS that trap. The buggy reference is

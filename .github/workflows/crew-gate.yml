@@ -1,14 +1,20 @@
 # Runs the crew's own merge gate — `run.py --week1`, §4.11 rows 1-8 plus the driver, then
 # row 9's headless half — on every push and pull request.
 #
-# WHY THE VERDICT IS READ FROM A RECORD AND NOT FROM AN EXIT CODE. `run.py --week1` EXITS 0
-# WHEN IT CANNOT RUN THE GATE AT ALL. Measured 2026-08-20 on a shell with no C++ compiler:
-# the run printed `[stop] No usable C++ compiler on PATH`, then
+# TWO INDEPENDENT VERDICTS, AND WHY BOTH ARE KEPT. `run.py --week1` USED TO EXIT 0 WHEN IT
+# COULD NOT RUN THE GATE AT ALL. Measured 2026-08-20 on a shell with no C++ compiler: the run
+# printed `[stop] No usable C++ compiler on PATH`, then
 # `INTEGRATION GATE BLOCK — failing: T-INT-04`, and returned 0. A job of the shape
-# `run: python run.py --week1` would be green on a run that asserted nothing — which is the
-# same defect shape this project has already paid for in four of its guards. So the run is
-# invoked for its artifacts, and `gate_ci_verdict.py` grades those artifacts and owns the
-# exit code. That script's own falsifiability is checked here before its verdict is trusted.
+# `run: python run.py --week1` was therefore green on a run that asserted nothing — the same
+# defect shape this project has already paid for in four of its guards. So this workflow
+# grades a RECORD with `gate_ci_verdict.py` instead of trusting the exit code.
+#
+# That hole is now closed at the source: `run.py` derives its exit code from the stages' own
+# verdicts (0 passed / 1 failed / 2 could not run / 3 crashed), so the run step below is a
+# real gate again. BOTH are kept, because they catch different things. An exit code says the
+# run did not pass; it cannot say the run COULD have failed, and check 4 of the grader reads
+# the pipeline's own pass-1 buggy-module controls to establish exactly that. A green tick
+# here means the run returned 0 AND its record survived six independent checks.
 #
 # WHAT A GREEN TICK MEANS HERE, stated because the difference is the whole value:
 #   - The headless C++ modules COMPILE and their invariants RUN on this runner (g++), and the
@@ -71,14 +77,16 @@ jobs:
         run: g++ --version
 
       # THE TOOL IS CHECKED BEFORE ITS VERDICT IS TRUSTED, the same discipline the UE repo's
-      # banner sweep runs under. 11 inline fixtures, each proving one of the six checks can
+      # banner sweep runs under. 12 inline fixtures, each proving one of the six checks can
       # FAIL — including one that carries the log's real `[Test Engineer] ` speaker prefix,
       # which is the shape the first version of the classifier read wrong.
       - name: verdict-reader self-test (prove the tool can fail)
         working-directory: stratocracy-crew
         run: python gate_ci_verdict.py --self-test
 
-      # Invoked for its artifacts. Its exit code is deliberately not the gate — see the header.
+      # Invoked BOTH for its artifacts and for its exit code — see the header. The exit code
+      # became a real verdict on 2026-08-20; before that this step could not fail, which is
+      # why the grading step below exists and is kept.
       - name: run the week-1 gate
         working-directory: stratocracy-crew
         run: python run.py --week1
