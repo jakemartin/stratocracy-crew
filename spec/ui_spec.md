@@ -233,6 +233,11 @@ already open in this file. The second IS a question, and it asks for a naming
 decision rather than for work: whether §2.11.6-B's input-gating constraint gets an
 acceptance ID of its own.
 
+**[STAMPED 2026-08-21 — the second is no longer a question.** The Director ruled,
+and the answer was to MINT: the ID is `T-UI-06`. The paragraph above is kept because it
+was true when written and because it records what was actually asked; the ruling itself
+is in item 2 below.]
+
 1. **T-UI-04's buildlist is a QUERY, not a snapshot field. RULED 2026-08-20; this
    one wants building, not deciding.** `Ui.h` refuses to guess in its own words —
    *"There is deliberately no third query: T-UI-04's buildlist has no stated shape
@@ -344,7 +349,8 @@ acceptance ID of its own.
    an editor pass, which is a different lack from this one.
 
 2. **An acceptance ID for §2.11.6-B's input-gating constraint (Q27). FILED
-   2026-08-21; not decided here.** This asks for a NAMING decision, not for work.
+   2026-08-21; RULED 2026-08-21 — the ID is `T-UI-06`.** This asked for a NAMING
+   decision, not for work, and the decision has now been made.
    Beat 1a of the guided opening closes three player-input routes for the one
    marked Infantry until it has moved, and **no acceptance ID names any of them.**
 
@@ -388,12 +394,53 @@ acceptance ID of its own.
    test may not mint an acceptance ID**, because naming is the Director's
    authority and is exercised here.
 
+   **THE RULING, 2026-08-21: the ID is minted. `T-UI-06` names the beat-1a
+   input-gating constraint.** The Director took the first of the two legitimate
+   answers, for the reason this request itself gave: the Q27 gates are a
+   state-machine availability property and `T-UI-02` is a query-result
+   comparison, and one name over two mechanisms makes a future breakage
+   unattributable by ID alone. **The number is the one this request proposed, but it
+   was re-enumerated before it was taken rather than read off this paragraph** —
+   `T-UI-06` appears nowhere in the shipped GDD, nowhere in `data/` or
+   `cpp_reference/`, and nowhere in downstream `Source/`; its only occurrence
+   anywhere on this machine was this request's own *e.g.* A grep that found it
+   here and stopped would have concluded the number was taken. The `T-UI-*` block
+   therefore runs 01—06 with no gap.
+
+   **`T-UI-06`, stated so that it can be asserted.** During beat 1a of the guided
+   opening, for the one marked Infantry that has not yet moved, all three routes
+   this request enumerates are inert — **End Turn** (Q27's own ruling text),
+   **Space** (the §2.11.6-B beat-1a row, on the same footing and for the same
+   reason), and the **Attack** transition (§2.11.1) — and each becomes live
+   again the moment that unit has moved. **The property is availability, not
+   highlighting:** an assertion under this ID observes which transitions the
+   machine offers, and never which hexes it paints. That boundary is the whole
+   reason the ID exists, and a clause that reaches for the highlight set has
+   wandered back into `T-UI-02`. Scope follows Q27 unchanged: first match only,
+   dying with `Skip guidance`.
+
+   **What this ruling does NOT do, named rather than left to assumption.** It does
+   not move a downstream clause by itself: those clauses sit under `T-UI-02` as a
+   recorded partial fit, and re-pointing them is a test-lane edit that needs its
+   own build and suite run. And it does not update the shipped GDD, where
+   `T-UI-01`—`T-UI-05` are defined canonically and where `T-UI-06` does not yet
+   appear. **That propagation is the open half of this ruling.** Until it lands, this
+   file is the only artifact that names `T-UI-06`, which is exactly the split-brain
+   the enumeration above had to see through.
+
    **Spec-only, and narrower than it may look.** No ID is minted here, no source
    file is touched, `data/` and `cpp_reference/` are unchanged, and nothing in
    downstream's citation changes today — those clauses stay under `T-UI-02` as a
    recorded partial fit until an ID exists to move them to. This is **not** the
    `uiBuildOptions` item in request 1: that one is a header change awaiting
    implementation and re-vendor; this one is an ID assignment.
+
+   **[STAMPED 2026-08-21 — "No ID is minted here" was true of the filing and is
+   false of this file now:** the ruling above mints `T-UI-06`. Every other clause in
+   that sentence still holds exactly as written — no source file is touched, `data/`
+   and `cpp_reference/` are unchanged, and downstream's citation does not change
+   today. Stamped rather than rewritten, because a negative that has gone stale
+   sends the next reader off to do work that is already done.]
 
    Full investigation, including the family enumeration and the verbatim
    `T-UI-02` comparison:
