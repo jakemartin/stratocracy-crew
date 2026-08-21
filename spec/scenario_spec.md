@@ -202,6 +202,67 @@ file rather than about anything the ruling decided correctly for row 7.
    verified:
    `Stratocracy/Tools/architect/evidence/upstream-second-scenario.md`.
 
+2. **A scenario whose `guidedOpening.infantry` starts adjacent to an enemy unit.
+   FILED 2026-08-21; not decided here.** This is a **separate request from 1**,
+   not an amendment to it, and the difference is the whole point: a second
+   scenario and a scenario-with-deployment-contact are different asks, and the
+   drafts named in 1 satisfy the first while failing the second.
+
+   **The ask is a ruling.** Does an authored scenario's `guidedOpening.infantry`
+   hex ever start adjacent to an enemy starting unit? If not for the shipped map
+   nor for either stretch draft, may one be drafted — or a not-yet-authored
+   stretch draft's starting layout revised — specifically to carry that property,
+   ahead of and separate from §2.13.7's stretch schedule? As in 1, §2.13.7's
+   four-clause condition is quoted rather than argued around.
+
+   **Neither existing stretch draft would carry the property, checked against the
+   GDD directly rather than against request 1's word.** *Longwater March*
+   (§2.13.5) places `guidedOpening.infantry` at (1,2) West / (11,5) East on a
+   13-column board whose homes the section itself states are "10 hexes apart";
+   the nearest West unit to any East unit is column 1 against column 11, and no
+   starting pair across the two sides is adjacent by any measure. *The Causeway*
+   (§2.13.6) places it at (1,2) West / (7,5) East on a 9-column board with homes
+   "6 hexes apart" — also not adjacent. `data/ferrum_crossing.json`, the only
+   scenario that exists, does not have it either: its opening Infantry hex sits
+   well inside its own half, symmetric with the enemy's. **So this cannot be
+   satisfied by pointing request 1 at either map.**
+
+   **What it unblocks, stated exactly.** With no starting hex adjacent to an
+   enemy unit, `strat::` attack-target enumeration for the marked Infantry at its
+   deployment hex has nothing to return, so the downstream attack arm cannot be
+   exercised at that beat under any board that exists. This request is a
+   *necessary* condition for reaching that arm at all.
+
+   **What it does NOT settle, kept separate deliberately.** Downstream has an
+   open question whether an empty target overlay at deployment is caused by the
+   **input gate** (beat-1a's Attack transition never lighting, the Q27 ruling
+   filed separately) or by the **board** (no legal target exists regardless of
+   gating). A scenario with a genuinely adjacent enemy only *removes the board as
+   an explanation*. The experiment still has to be run in both branches — with
+   the gate as implemented, and with it bypassed at the rules-module level — and
+   that second half is downstream implementation and test work, not something
+   this filing supplies. Granting this request does not close that question.
+
+   **Two things must not be mistaken for it having been satisfied.** (a) The
+   downstream fixture `ferrum_crossing_variant.json` is the shipped board hex for
+   hex, with `scenarioHash` dropped and `scenarioId` relabelled, written to prove
+   a seeded-from-a-different-scenario refusal. It moves no content axis and its
+   opening Infantry hex is exactly as non-adjacent as *Ferrum Crossing*'s. (b) A
+   downstream clause already asserts the **absence** this request exists to give
+   a board to work around: it asks for the marked Infantry's attack targets
+   directly, gets an answered-not-refused result with **zero** hexes, and
+   separately walks the whole ten-unit deployment finding **0 of 10** answered
+   units with a legal attack anywhere. That clause carries its own positive
+   control — it plays a private AI-vs-AI match until the same method returns
+   non-empty for *some* unit — so the zero is established as a fact about **this
+   board** rather than a limitation of the method. That control is why this
+   filing states the board as the cause rather than guessing at it.
+
+   Full investigation, including the git-blob measurement that the vendored
+   scenario equals the current crew bytes:
+   `Stratocracy/Tools/architect/evidence/upstream-guided-opening-adjacency.md`.
+
+
 ## Acceptance
 
 `T-SCN-01..07` in full. `T-SCN-08` on fixture (c) plus measure-and-report on the
