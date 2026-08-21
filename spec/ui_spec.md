@@ -225,10 +225,13 @@ row, and flips nothing.
 
 ## Change requests for the Director
 
-There is one, and it is not a question: T-UI-04's buildlist shape has been ruled,
-and it is recorded here so the work has a home and a shape before anyone writes
-it. Three residual decisions the ruling does not settle are stated as questions
-rather than folded in, and one of them is already open in this file.
+There are two, and they are different in kind. The first is not a question:
+T-UI-04's buildlist shape has been ruled, and it is recorded here so the work has
+a home and a shape before anyone writes it. Three residual decisions that ruling
+does not settle are stated as questions rather than folded in, and one of them is
+already open in this file. The second IS a question, and it asks for a naming
+decision rather than for work: whether §2.11.6-B's input-gating constraint gets an
+acceptance ID of its own.
 
 1. **T-UI-04's buildlist is a QUERY, not a snapshot field. RULED 2026-08-20; this
    one wants building, not deciding.** `Ui.h` refuses to guess in its own words —
@@ -339,6 +342,63 @@ rather than folded in, and one of them is already open in this file.
    **Spec-only.** No source file is touched here, no acceptance ID moves, and the
    row's posture is unchanged: `T-UI-03` and `T-UI-04` remain unclosed for want of
    an editor pass, which is a different lack from this one.
+
+2. **An acceptance ID for §2.11.6-B's input-gating constraint (Q27). FILED
+   2026-08-21; not decided here.** This asks for a NAMING decision, not for work.
+   Beat 1a of the guided opening closes three player-input routes for the one
+   marked Infantry until it has moved, and **no acceptance ID names any of them.**
+
+   **What is ruled, stated exactly, because the three gates do not all come from
+   the same sentence.** Q27 (§4.7) is RULED and its ruling text names **End
+   Turn**: inert during beat 1a until the marked Infantry has moved, hover
+   `Move the marked Infantry first.`, scoped to the first match, dying with
+   `Skip guidance`. The §2.11.6-B beat-1a row is what extends that to **Space**,
+   "inert for it on the same footing as End Turn and for the same reason" —
+   the two being the machine's only routes from `SELECTED` to `DONE` that do not
+   pass through `MOVED` — and separately closes the **Attack** transition
+   (§2.11.1) to that unit. The constraint is not in dispute; only its name is
+   missing.
+
+   **The nearest existing ID is a stretch, and saying why is the request.**
+   Downstream currently asserts these gates under `T-UI-02`, whose written
+   invariant is *"the reachable-hex highlight displays exactly the T-MOVE-01 set
+   — the UI queries the module and never recomputes movement (§2.5)"*. That is a
+   **query-result comparison**: two sets are equal. The Q27 gates are a
+   **state-machine availability property** of the guided-opening layer. They
+   share no mechanism, and filing them under one ID puts two independent
+   properties behind one name — so a future edit breaking the highlight set and
+   one breaking End Turn's gating would be indistinguishable by ID alone.
+
+   **No better ID exists, enumerated rather than recalled.** `grep -oE` over the
+   shipped GDD returns thirteen `T-*` families — AI, CAP, COMBAT, DATA, FAME,
+   HEX, INT, MOVE, REPAIR, SAVE, SCN, TURN, UI — and no onboarding or guidance
+   family at all. The `T-UI-*` block runs 01–05 (forecast=resolution;
+   reachable-hex highlight; scoreboard binding; buildlist/flag exclusion;
+   snapshot fidelity) and none names beat-gating, input inertness, or the
+   guided-opening state machine. §2.11.6 mints no ID of its own anywhere; it
+   cites into other families instead. Q27 is the exception that gets prose and
+   no identifier.
+
+   **The ask, and both answers are legitimate:** either mint an ID (e.g.
+   `T-UI-06`) for the beat-1a input-gating constraint, or rule explicitly that
+   Q27 stays unassigned by design and downstream consumers cite it as `Q27`
+   rather than by acceptance ID. This filing states the question and does not
+   presume which. It follows the precedent this file already sets, where `T-UI-04`
+   refused to invent a third query rather than pre-empt a ruling: **a downstream
+   test may not mint an acceptance ID**, because naming is the Director's
+   authority and is exercised here.
+
+   **Spec-only, and narrower than it may look.** No ID is minted here, no source
+   file is touched, `data/` and `cpp_reference/` are unchanged, and nothing in
+   downstream's citation changes today — those clauses stay under `T-UI-02` as a
+   recorded partial fit until an ID exists to move them to. This is **not** the
+   `uiBuildOptions` item in request 1: that one is a header change awaiting
+   implementation and re-vendor; this one is an ID assignment.
+
+   Full investigation, including the family enumeration and the verbatim
+   `T-UI-02` comparison:
+   `Stratocracy/Tools/architect/evidence/upstream-onboarding-input-gating-acceptance-id.md`.
+
 
 ## Acceptance
 
