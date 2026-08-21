@@ -129,6 +129,12 @@ a shape you need is not in the document, **file a change request rather than
 choosing one** — a query invented here would pre-empt a Director ruling and then
 be gated in-editor as though the document had asked for it.
 
+**RULED 2026-08-20 — the Director has since written the shape: a query.** Change
+request 1 below. The paragraph above stays correct as this module's position for
+every commit up to and including `1d5a42f`: nothing here invented a shape, and
+the refusal in `Ui.h` was the right answer until a ruling existed. What changed is
+that one now does.
+
 ## Invariants (the merge gate)
 
 `T-UI-01`, `T-UI-02`, `T-UI-05` and `GATE-CAP-PARTIAL` are stated in full in
@@ -216,6 +222,123 @@ the `help` body, the file-header comment and `README.md` in one pass.
 
 `GATE-DRV-*` IDs are **not** `T-*`. The driver is not a §4.7 stub, has no ledger
 row, and flips nothing.
+
+## Change requests for the Director
+
+There is one, and it is not a question: T-UI-04's buildlist shape has been ruled,
+and it is recorded here so the work has a home and a shape before anyone writes
+it. Three residual decisions the ruling does not settle are stated as questions
+rather than folded in, and one of them is already open in this file.
+
+1. **T-UI-04's buildlist is a QUERY, not a snapshot field. RULED 2026-08-20; this
+   one wants building, not deciding.** `Ui.h` refuses to guess in its own words —
+   *"There is deliberately no third query: T-UI-04's buildlist has no stated shape
+   -- field or query -- and inventing one here would pre-empt a Director ruling"* —
+   and the **Add no third query** paragraph above says the same. The Director has
+   now written the shape.
+
+   The ruling: **a third `ui*` function beside `uiReachable` and `uiForecast`**,
+   answering *what can this side afford at this factory right now*.
+
+   The reasoning given, so it is not re-litigated: it matches the two queries that
+   already exist, and it keeps `UiSnapshot` fixed. Every snapshot field is pinned
+   by `T-UI-05`'s enumeration, so a `std::vector<UiBuildOption>` alongside
+   `factories` would move that invariant and make **every** consumer of the
+   snapshot carry a field only §2.11.5 reads. A query charges the cost to the one
+   caller that wants it.
+
+   **The consumer needs almost nothing else.** `UiFactoryView` already carries
+   `hasBuiltThisTurn`, `buildWaiting` and `spawnBlocked`; `UiSideView` already
+   carries `fameTotal`. The missing thing is the affordability answer itself.
+
+   A shape in the idiom `UiForecast` already uses, offered as a starting point and
+   not as part of the ruling — the signature is the implementer's:
+
+   ```
+   struct UiBuildOption {
+       int         defIndex   = -1;    // index into the caller's unit table
+       std::string id;                 // "Infantry"
+       int         costFame   = 0;     // MIRRORS UnitDef::costFame
+       bool        affordable = false; // DECLARED DERIVED: costFame <= this side's fameTotal
+       bool        available  = false; // DECLARED DERIVED -- see (b), which is unruled
+       std::string reason;             // why not, when unavailable
+   };
+
+   std::vector<UiBuildOption>
+   uiBuildOptions(const UiWorld& w, int side, const Hex& factoryHex);
+   ```
+
+   **Three things the ruling does not settle, worst first.**
+
+   - **(a) Affordable-only, or all four rows with an affordability flag?** This
+     one bites hardest and has a recommendation. `T-UI-03` forbids widget-side
+     arithmetic. If this query returns only the rows the side can afford, then a
+     production menu that greys out the rest — which is the ordinary way to show a
+     player what they are saving toward — has to decide "can I afford this" for
+     the omitted rows **itself**, which is exactly the arithmetic `T-UI-03`
+     forbids, and it would have to invent the omitted rows too. **Recommended:
+     return all four rows, each carrying its `costFame` and a module-computed
+     `affordable`.** The costs make the stakes concrete — Infantry 100, Recon 150,
+     Artillery 200, Tank 300 — so at 150 Fame an affordable-only list is one row
+     long and the menu can say nothing true about the other three.
+   - **(b) What factory state does to the answer — and this file has already
+     recorded that it is unruled.** `UiFactoryView::spawnBlocked`'s own comment
+     says: *"Q31 asks whether a player may queue into a boxed-in factory;
+     `buildWaiting` is the field such a ruling would bind to, and nothing here
+     rules it -- today the waiting build is an AI-only path and no gate asserts a
+     player-queued one."* A **per-factory** query cannot avoid that question: it
+     must say whether `hasBuiltThisTurn`, `buildWaiting` or `spawnBlocked` make an
+     option *unavailable* as opposed to merely unaffordable. Ruling Q31 would
+     settle it. A **per-side** query would dodge it, at the cost of making the menu
+     ask a second question to find out whether the build can actually be placed.
+   - **(c) Does the per-type population cap apply to the PLAYER?** Change request 3
+     in `ai_spec.md`, ruled 2026-08-19 at `85995b8`, is worded *"a side may not
+     have more than N units of a type on the board at once"* — **a side**, not the
+     AI. It is ruled and **not yet implemented** (no `cap` symbol exists in
+     `cpp_reference/` at `1d5a42f`). If it is a rule of the game, `uiBuildOptions`
+     must reflect it or §2.11.5 offers builds the rules will refuse; if it is an AI
+     policy, this query must **not** reflect it or the player is silently bound by
+     a rule nobody ruled for them. Whoever implements the cap and whoever
+     implements this query need the same answer, and today they would each guess.
+
+   **Two notes for whoever writes it.**
+
+   - **It does not delegate, and the section above says both queries do.** The
+     "Queries (§4.7 Stub 8). Both DELEGATE." comment in `Ui.h` is true of
+     `uiReachable` (`Move.h::reachable`) and `uiForecast`
+     (`Combat.h::resolveDamage`). There is no existing function that answers *what
+     can this side afford*, and **`chooseBuild` is not it**: it takes `AiState`,
+     which is the AI's own state and not a `UiWorld`, and it returns the ONE
+     cheapest affordable entry rather than the set — a menu built on it would offer
+     the player a single choice. So this query **computes** where the other two
+     forward. That is a real departure and wants saying out loud rather than being
+     discovered; the precedent for a module-side derivation that is not a
+     delegation is already here in `standingIncomeRate` and `spawnHexesBlocked`.
+     Update that comment in the same commit that adds the query.
+   - **T-UI-04's flag clause is discharged STRUCTURALLY, and a clause asserting it
+     against this query cannot fail.** T-UI-04 says *"the flag never appears
+     (T-SCN-01's non-producible clause, enforced at the UI layer too)"*. But
+     `isFlag` is a `Scenario.h` **placement** field, valid only on a Tank, and
+     `data/units.csv` has exactly four rows — Infantry, Tank, Artillery, Recon —
+     with no flag row among them. A query that enumerates unit-table rows therefore
+     **cannot** emit a flag, whatever it does. Two consequences: do not write a
+     filter for a case that cannot arise, and do not write a T-UI-04 clause
+     asserting the flag's absence from this query's output and count it as
+     evidence — it would pass on an empty implementation and on a wrong one alike.
+     If the Director wants that clause to bite, it has to be gated where a flag
+     could actually reach a buildlist, which is the placement and ledger level, not
+     here.
+
+   **What is downstream.** The UE project holds §2.11.5's production menu as the
+   last feature on §4.5's hard MVP line, and it is blocked on this shape landing —
+   it may not author it locally, because `Source/StratRules/` there is vendored
+   certified bytes. Whoever implements this changes `cpp_reference/Ui.h`; the UE
+   side then re-vendors, `StratRules.manifest.json`'s `rulesCommit` moves, and
+   `T-INT-01` hash-matches the result.
+
+   **Spec-only.** No source file is touched here, no acceptance ID moves, and the
+   row's posture is unchanged: `T-UI-03` and `T-UI-04` remain unclosed for want of
+   an editor pass, which is a different lack from this one.
 
 ## Acceptance
 
