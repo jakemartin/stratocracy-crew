@@ -1,7 +1,9 @@
 // Stratocracy — UI binding contract, pass 2 (GDD §4.7 Stub 8, §4.11 row 8).
 //
 // Every value below is READ from the module that owns it. Nothing here computes a
-// rule: the snapshot projects, and both queries delegate. See spec/ui_spec.md.
+// rule: the snapshot projects, `uiReachable` and `uiForecast` delegate, and
+// `uiBuildOptions` assembles an ANSWER out of gates it reads from Turn.h and
+// Economy.h without owning one of them. See spec/ui_spec.md.
 #include "Ui.h"
 
 #include <algorithm>
@@ -304,6 +306,86 @@ UiResolution uiResolveForGate(const UiWorld& w, int attackerId, const Hex& defen
     if (r.attackerHpAfter < 0) r.attackerHpAfter = 0;
     r.applied = true;
     return r;
+}
+
+// ---------------------------------------------------------------------------
+// T-UI-04 — the production menu's buildlist (§2.11.5)
+// ---------------------------------------------------------------------------
+std::vector<UiBuildOption> uiBuildOptions(const UiWorld& w, int side,
+                                          const Hex& factoryHex) {
+    std::vector<UiBuildOption> out;
+    if (w.unitDefs == nullptr) return out;   // no table: no rows exist to enumerate
+
+    // AVAILABILITY IS COMPUTED ONCE, ABOVE THE LOOP, and that is not an optimisation.
+    // Every gate below is a property of the FACTORY and the SIDE, so a per-row
+    // computation could only ever differ by leaking a per-TYPE rule -- which is
+    // precisely the AI's population cap that ruling (c) keeps out of this query.
+    std::string why;                          // empty == available
+    if (side < 0 || side >= SIDE_COUNT) {
+        why = "invalid side";
+    } else if (w.economy == nullptr || w.turn == nullptr || w.terrain == nullptr) {
+        why = "no tables";
+    } else {
+        const EconomyState& e = *w.economy;
+        const TurnState&    t = *w.turn;
+        const Objective*    o = findObjective(e, factoryHex);
+
+        // T-TURN-10 FIRST, because Turn.h says in as many words that a caller must
+        // consult it BEFORE it charges anything. `canBuildAt` DECIDES; the ladder
+        // inside only WORDS what it already decided, in `markBuilt`'s own words for
+        // the same refusals. If a branch here were wrong the VERDICT would still be
+        // right and only the sentence would differ -- which is the point of asking
+        // the module for the answer and the module's neighbour for the phrasing.
+        if (!canBuildAt(t, factoryHex, side)) {
+            if (!t.running)                         why = "no match is running";
+            else if (t.phase == Phase::MatchOver)   why = "the match is over";
+            else if (t.phase == Phase::TurnPending) why = "the turn has not begun";
+            else if (t.phase == Phase::StartOfTurn)
+                why = "start-of-turn repair has not been applied yet";
+            else if (side != t.activeSide)
+                why = "side " + std::to_string(side) + " is not the active side";
+            // Nothing else can have refused it: the allowance is the last thing
+            // `canBuildAt` asks about.
+            else why = "that factory has already taken its build this turn";
+        }
+        // Then `queueBuild`'s own ladder, in ITS order and ITS words, so an option
+        // this query calls available is one `queueBuild` refuses for no reason other
+        // than cost -- and cost is `affordable`, which is a different field.
+        else if (o == nullptr)     { why = "no objective at that hex"; }
+        else if (o->owner != side) { why = "factory is not held by this side"; }
+        else if (o->terrainIndex < 0 ||
+                 static_cast<std::size_t>(o->terrainIndex) >= w.terrain->size()) {
+            why = "objective has no terrain row";
+        } else if (!(*w.terrain)[static_cast<std::size_t>(o->terrainIndex)].isSpawnPoint) {
+            why = "not a build point";
+        } else {
+            for (const PendingBuild& p : e.pending)
+                if (hexEqual(p.factoryHex, factoryHex)) {
+                    why = "factory already has a pending build";
+                    break;
+                }
+        }
+        // `spawnHexesBlocked` is DELIBERATELY NOT CONSULTED (Q31, ruled 2026-08-22).
+        // A boxed-in factory still takes the build; `buildWaiting` holds it.
+    }
+
+    const int purse = (w.economy != nullptr && side >= 0 && side < SIDE_COUNT)
+                          ? w.economy->side[side].fameTotal
+                          : 0;
+
+    out.reserve(w.unitDefs->size());
+    for (std::size_t i = 0; i < w.unitDefs->size(); ++i) {
+        const UnitDef& d = (*w.unitDefs)[i];
+        UiBuildOption op;
+        op.defIndex   = static_cast<int>(i);
+        op.id         = d.id;
+        op.costFame   = d.costFame;
+        op.affordable = (d.costFame <= purse);
+        op.available  = why.empty();
+        op.reason     = why;
+        out.push_back(op);
+    }
+    return out;
 }
 
 // ---------------------------------------------------------------------------

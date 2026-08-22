@@ -4,7 +4,10 @@
 // This module owns NO RULES and NO BOARD. It is the contract for how every widget
 // is fed: widgets bind to the view-model snapshot below plus the §4.9 event list,
 // and hold no rules state (§4.1). Every value here is produced by the module that
-// already owns it, and both queries delegate. A number this module computed for
+// already owns it. Two of the three queries DELEGATE outright; `uiBuildOptions`
+// COMPUTES, because no module owns "what can this side afford at this factory" -- and
+// it still owns no rule, since every gate it reports is READ from the module that
+// holds it. See the Queries block below. A number this module computed for
 // itself would be a defect even when it is the right number -- the point of the row
 // is that the screen cannot disagree with the simulation.
 //
@@ -132,10 +135,11 @@ struct UiFactoryView {
     //
     // DISTINCT from `buildWaiting`, and the difference is the case §2.11.5 must
     // display: a boxed-in factory with NOTHING QUEUED has `spawnBlocked` true and
-    // `buildWaiting` false, which `buildWaiting` alone cannot express. Q31 asks
-    // whether a player may queue into a boxed-in factory; `buildWaiting` is the field
-    // such a ruling would bind to, and nothing here rules it -- today the waiting
-    // build is an AI-only path and no gate asserts a player-queued one.
+    // `buildWaiting` false, which `buildWaiting` alone cannot express. Q31 -- may a
+    // player queue into a boxed-in factory? -- is RULED 2026-08-22: YES. `buildWaiting`
+    // is the field the ruling binds to, and the player gets the mechanism the AI path
+    // already uses rather than a second one. So this field is INFORMATIONAL: something
+    // §2.11.5 DISPLAYS, and `uiBuildOptions` must NOT fold it into availability.
     bool spawnBlocked = false;
 };
 
@@ -322,9 +326,24 @@ int standingIncomeRate(const EconomyState& e, const std::vector<TerrainDef>& ter
 bool spawnHexesBlocked(const UiWorld& w, const Hex& factoryHex);
 
 // ---------------------------------------------------------------------------
-// Queries (§4.7 Stub 8). Both DELEGATE. There is deliberately no third query:
-// T-UI-04's buildlist has no stated shape -- field or query -- and inventing one
-// here would pre-empt a Director ruling.
+// Queries (§4.7 Stub 8). THREE, and they are NOT all the same kind.
+//
+// `uiReachable` and `uiForecast` DELEGATE: each forwards to the module that owns the
+// answer -- Move.h::reachable, Combat.h::resolveDamage -- and chooses nothing.
+//
+// `uiBuildOptions` COMPUTES, and that is a real departure worth saying out loud
+// rather than leaving to be discovered. No existing function answers "what can this
+// side afford at this factory", and `chooseBuild` IS NOT IT: it takes `AiState` --
+// the AI's own state, not a `UiWorld` -- and returns the ONE cheapest affordable
+// entry rather than the set, so a menu built on it would offer the player a single
+// choice. The precedent for a module-side derivation that is not a delegation is
+// already here, in `standingIncomeRate` and `spawnHexesBlocked`.
+//
+// The refusal this block used to carry -- that T-UI-04's buildlist had no stated
+// shape and inventing one would pre-empt a Director ruling -- is SPENT. The shape was
+// ruled 2026-08-20 (a query, not a snapshot field: every snapshot field is pinned by
+// T-UI-05's enumeration and a field would move that invariant), and its three
+// residual questions ruled 2026-08-22. See spec/ui_spec.md change request 1.
 // ---------------------------------------------------------------------------
 
 // T-UI-02. Exactly Move.h::reachable's set for that unit -- hex for hex, cost for
@@ -359,6 +378,46 @@ struct UiResolution {
     int defenderHpAfter = 0;
 };
 UiResolution uiResolveForGate(const UiWorld& w, int attackerId, const Hex& defenderHex);
+
+// T-UI-04's buildlist. One row per §2.4 unit-table row, answering for ONE factory:
+// what can this side build here, right now, and what does it cost.
+struct UiBuildOption {
+    int         defIndex   = -1;    // into `unitDefs`; the §2.4 row this offer is
+    std::string id;                 // MIRRORS UnitDef::id
+    int         costFame   = 0;     // MIRRORS UnitDef::costFame
+    // DECLARED DERIVED. `costFame <= this side's fameTotal`, computed HERE because
+    // T-UI-03 forbids the menu doing it. Deliberately NOT folded into `available`:
+    // "you cannot build at this factory this turn" and "you are still saving for
+    // this" are two different answers and §2.11.5 shows them differently.
+    bool        affordable = false;
+    // DECLARED DERIVED. Every gate a Build passes on its way in EXCEPT cost --
+    // Turn.h::canBuildAt (T-TURN-10's per-factory allowance) first, because a caller
+    // must consult it BEFORE it charges anything, then Economy.h::queueBuild's own
+    // refusal ladder in ITS order and ITS words.
+    //
+    // `spawnBlocked` is NOT among them (Q31, ruled 2026-08-22): a player MAY queue
+    // into a boxed-in factory, and `buildWaiting` holds the build until a spawn hex
+    // frees. Folding it in here would refuse a Build the rules accept.
+    //
+    // IT DOES NOT VARY BY ROW. Every gate above is a property of the FACTORY and the
+    // SIDE, never of the unit type, and that invariance is the OBSERVABLE FORM of the
+    // ruling that the per-type population cap is AI POLICY (spec/ai_spec.md, narrowed
+    // 2026-08-22). A row-varying `available` would be that cap leaking into a path a
+    // player command passes through, which is the one thing the narrowing forbids.
+    bool        available  = false;
+    std::string reason;             // why not, when unavailable; empty when available
+};
+
+// ALL FOUR rows, in unit-table order, unconditionally (ruled 2026-08-22 (a)). Never
+// affordable-only: a menu that greys out what it cannot afford would otherwise have
+// to decide affordability for the omitted rows ITSELF -- the exact arithmetic
+// T-UI-03 forbids -- and invent those rows besides.
+//
+// PER-FACTORY: `factoryHex` stays in the signature. Q31's ruling removed the need for
+// the per-side dodge, not the need for the answer. Empty only when the world carries
+// no unit table, which is a missing input rather than an empty answer.
+std::vector<UiBuildOption>
+uiBuildOptions(const UiWorld& w, int side, const Hex& factoryHex);
 
 const UiUnit*     findUiUnit(const UiWorld& w, int unitId);
 const UiUnitView* findUiUnitView(const UiSnapshot& s, int unitId);

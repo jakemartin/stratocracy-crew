@@ -685,6 +685,222 @@ int main(int argc, char** argv) {
     }
 
     // -----------------------------------------------------------------------
+    // GATE-BUILDLIST -- §2.11.5's production menu query. T-UI-04's buildlist shape
+    // was ruled 2026-08-20 (a query, not a snapshot field) and its three residual
+    // questions ruled 2026-08-22; this gates what those rulings actually say.
+    //
+    // THIS IS NOT T-UI-04, and it is not counted as it. That ID asserts the
+    // production MENU BINDS -- in-editor Automation over a widget that does not
+    // exist yet -- and row 8's ledger row does not flip on anything below. What runs
+    // here is the QUERY the menu will bind to.
+    //
+    // NO FLAG CLAUSE IS WRITTEN, deliberately. `isFlag` is a Scenario.h PLACEMENT
+    // field and data/units.csv has four rows with no flag among them, so a clause
+    // asserting the flag's absence from this query's output CANNOT FAIL: it passes on
+    // an empty implementation and a wrong one alike. It would be evidence of nothing.
+    // -----------------------------------------------------------------------
+    std::printf("\n-- GATE-BUILDLIST  the production menu's query (§2.11.5) --------------\n");
+    {
+        const Hex fac  = offsetToAxial(6, 0);        // 'F' in the fixture board
+        const Hex town = offsetToAxial(4, 2);        // 'T' -- an objective, not a build point
+
+        // The purse is DERIVED from the table, never typed: at the cheapest row's
+        // cost exactly the cheapest tier is affordable, whatever data/units.csv says.
+        int minCost = units[0].costFame, maxCost = units[0].costFame;
+        for (const UnitDef& d : units) {
+            if (d.costFame < minCost) minCost = d.costFame;
+            if (d.costFame > maxCost) maxCost = d.costFame;
+        }
+
+        EconomyState econ;
+        econ.objectives.push_back(Objective{fac,  0, 6});    // Factory, side 0
+        econ.objectives.push_back(Objective{town, 1, 4});    // Town, side 1
+        initSide(econ, 0, minCost);
+        initSide(econ, 1, minCost);
+
+        TurnState t;
+        std::string terr;
+        initMatch(t, 0, 20, terr);
+        BoardSnapshot bs; bs.factoryTotal = 1;
+        beginTurn(t, bs);
+        applyStartOfTurnRepair(t, std::vector<RepairSubject>());
+
+        UiWorld w;
+        w.board = buildBoard(w.units);                // no units: the factory is open
+        w.unitDefs = &units;
+        w.terrain  = &terrain;
+        w.economy  = &econ;
+        w.turn     = &t;
+
+        // Availability must never vary by row -- that invariance is the observable
+        // form of "the population cap is AI policy" (ai_spec.md, narrowed 2026-08-22).
+        auto uniform = [](const std::vector<UiBuildOption>& v) {
+            if (v.empty()) return false;
+            for (const UiBuildOption& o : v)
+                if (o.available != v[0].available || o.reason != v[0].reason) return false;
+            return true;
+        };
+
+        const std::vector<UiBuildOption> open = uiBuildOptions(w, 0, fac);
+
+        // The fixture must be able to tell the answers apart, or nothing below bites.
+        check("GATE-BUILDLIST (pre) the fixture discriminates: the table has more than "
+              "one price, and this factory is NOT boxed in",
+              minCost < maxCost && !spawnHexesBlocked(w, fac));
+
+        // -- ruling (a): all four rows, table order, costs mirrored ---------------
+        bool rowsMatch = (open.size() == units.size());
+        for (std::size_t i = 0; rowsMatch && i < units.size(); ++i)
+            rowsMatch = (open[i].defIndex == static_cast<int>(i) &&
+                         open[i].id       == units[i].id &&
+                         open[i].costFame == units[i].costFame);
+        check("GATE-BUILDLIST (a) EVERY unit-table row is returned, in table order, "
+              "each mirroring its own id and costFame",
+              rowsMatch);
+        whyInt("rows returned", static_cast<int>(open.size()));
+
+        // -- ruling (a): affordability is computed HERE and actually splits -------
+        int aff = 0, expectAff = 0;
+        for (const UiBuildOption& o : open) if (o.affordable) ++aff;
+        for (const UnitDef& d : units) if (d.costFame <= minCost) ++expectAff;
+        check("GATE-BUILDLIST (b) `affordable` is module-computed (T-UI-03) and "
+              "discriminates: it agrees with the table and is neither all nor none",
+              aff == expectAff && aff > 0 && aff < static_cast<int>(units.size()));
+        whyInt("affordable rows at the cheapest price", aff);
+
+        // -- the healthy case ----------------------------------------------------
+        bool allOpen = true;
+        for (const UiBuildOption& o : open) allOpen = allOpen && o.available && o.reason.empty();
+        check("GATE-BUILDLIST (c) at an owned, idle, un-queued factory every row is "
+              "available and carries no reason",
+              allOpen && uniform(open));
+
+        // -- ruling (b): hasBuiltThisTurn DOES gate (T-TURN-10) -------------------
+        std::vector<UiBuildOption> built;
+        {
+            TurnState t2 = t;
+            std::string e2;
+            const bool marked = markBuilt(t2, fac, 0, e2);
+            UiWorld w2 = w; w2.turn = &t2;
+            built = uiBuildOptions(w2, 0, fac);
+            bool closed = marked && !built.empty();
+            for (const UiBuildOption& o : built) closed = closed && !o.available;
+            check("GATE-BUILDLIST (d) T-TURN-10's spent allowance closes the whole "
+                  "menu, in the words the module refuses in",
+                  closed && uniform(built) &&
+                  built[0].reason == "that factory has already taken its build this turn");
+        }
+
+        // -- ruling (b): buildWaiting DOES gate ----------------------------------
+        std::vector<UiBuildOption> queued;
+        {
+            EconomyState e3 = econ;
+            PendingBuild pb; pb.factoryHex = fac; pb.side = 0; pb.defIndex = 0;
+            e3.pending.push_back(pb);
+            UiWorld w3 = w; w3.economy = &e3;
+            queued = uiBuildOptions(w3, 0, fac);
+            bool closed = !queued.empty();
+            for (const UiBuildOption& o : queued) closed = closed && !o.available;
+            check("GATE-BUILDLIST (e) a factory already holding a waiting build offers "
+                  "no new option, in queueBuild's own words",
+                  closed && uniform(queued) &&
+                  queued[0].reason == "factory already has a pending build");
+        }
+
+        // -- ruling (b) / Q31: spawnBlocked does NOT gate -------------------------
+        std::vector<UiBuildOption> boxed;
+        {
+            UiWorld w4 = w;
+            const int fi = w4.board.index(fac);
+            if (fi >= 0) w4.board.occupant[static_cast<std::size_t>(fi)] = 901;
+            Hex adj[HEX_DIRECTIONS];
+            const int an = neighbors(fac, w4.board.bounds, adj);
+            for (int i = 0; i < an; ++i) {
+                const int ai2 = w4.board.index(adj[i]);
+                if (ai2 >= 0) w4.board.occupant[static_cast<std::size_t>(ai2)] = 910 + i;
+            }
+            // POSITIVE CONTROL. Without this the clause below passes on a fixture that
+            // was never boxed in, which is a green light for the opposite ruling.
+            check("GATE-BUILDLIST (f-control) the boxed-in fixture really is boxed in: "
+                  "spawnHexesBlocked says so",
+                  spawnHexesBlocked(w4, fac));
+
+            boxed = uiBuildOptions(w4, 0, fac);
+            bool stillOpen = !boxed.empty();
+            for (const UiBuildOption& o : boxed) stillOpen = stillOpen && o.available;
+            check("GATE-BUILDLIST (f) Q31, RULED: a boxed-in factory still offers every "
+                  "row -- spawnBlocked is informational and never folds into availability",
+                  stillOpen && uniform(boxed));
+        }
+
+        // -- T-TURN-10 is consulted BEFORE queueBuild's ladder, so a query for a side
+        //    that is not up is refused there and never reaches ownership ------------
+        const std::vector<UiBuildOption> offTurn = uiBuildOptions(w, 1, fac);
+        check("GATE-BUILDLIST (g0) a side that is not the active side is refused by "
+              "T-TURN-10 first, in markBuilt's words -- the allowance outranks the "
+              "ownership question because a caller must consult it first",
+              !offTurn.empty() && !offTurn[0].available && uniform(offTurn) &&
+              offTurn[0].reason == "side 1 is not the active side");
+
+        // -- queueBuild's structural refusals, in its words. Both are asked AS THE
+        //    ACTIVE SIDE, so T-TURN-10 passes and the ladder below is what answers.
+        std::vector<UiBuildOption> foreign;
+        {
+            EconomyState enemyHeld = econ;                   // side 1 now holds the factory
+            for (Objective& o : enemyHeld.objectives)
+                if (hexEqual(o.hex, fac)) o.owner = 1;
+            UiWorld w6 = w; w6.economy = &enemyHeld;
+            foreign = uiBuildOptions(w6, 0, fac);
+            check("GATE-BUILDLIST (g) a factory the active side does not hold is "
+                  "refused in queueBuild's words",
+                  !foreign.empty() && !foreign[0].available && uniform(foreign) &&
+                  foreign[0].reason == "factory is not held by this side");
+        }
+
+        std::vector<UiBuildOption> notFactory;
+        {
+            EconomyState townHeld = econ;                    // side 0 now holds the Town
+            for (Objective& o : townHeld.objectives)
+                if (hexEqual(o.hex, town)) o.owner = 0;
+            UiWorld w7 = w; w7.economy = &townHeld;
+            notFactory = uiBuildOptions(w7, 0, town);
+            check("GATE-BUILDLIST (h) an objective the side DOES hold but that is not a "
+                  "build point is refused in queueBuild's words",
+                  !notFactory.empty() && !notFactory[0].available && uniform(notFactory) &&
+                  notFactory[0].reason == "not a build point");
+        }
+
+        // -- ruling (c): availability never varies by row, in ANY state -----------
+        check("GATE-BUILDLIST (i) across every state above, `available` is a property "
+              "of the FACTORY and never of the row -- the cap cannot be leaking here",
+              uniform(open) && uniform(built) && uniform(queued) && uniform(boxed) &&
+              uniform(offTurn) && uniform(foreign) && uniform(notFactory));
+
+        // -- the two fields are INDEPENDENT, both directions ----------------------
+        bool someAffordableWhileClosed = false;
+        for (const UiBuildOption& o : built)
+            if (o.affordable && !o.available) someAffordableWhileClosed = true;
+        check("GATE-BUILDLIST (j) unavailable does not imply unaffordable: a closed "
+              "factory still reports what the side could pay for",
+              someAffordableWhileClosed);
+
+        {
+            EconomyState broke = econ;
+            initSide(broke, 0, 0);
+            UiWorld w5 = w; w5.economy = &broke;
+            const std::vector<UiBuildOption> poor = uiBuildOptions(w5, 0, fac);
+            bool noneAfford = !poor.empty(), allAvail = !poor.empty();
+            for (const UiBuildOption& o : poor) {
+                noneAfford = noneAfford && !o.affordable;
+                allAvail   = allAvail && o.available;
+            }
+            check("GATE-BUILDLIST (k) and unaffordable does not imply unavailable: at "
+                  "zero Fame every row is still offered, priced and greyable",
+                  noneAfford && allAvail && uniform(poor));
+        }
+    }
+
+    // -----------------------------------------------------------------------
     std::printf("\n");
     std::printf("NOT RUN  T-UI-03 -- the live standings scoreboard binds 1:1 to snapshot\n");
     std::printf("         fields with no widget-side arithmetic. In-editor Unreal\n");
@@ -695,10 +911,10 @@ int main(int argc, char** argv) {
     std::printf("         lack is a subject, not a rule.\n");
     std::printf("NOT RUN  T-UI-04 -- the production menu binds to the buildlist derived\n");
     std::printf("         from the four Stub-2 unit rows plus current fameTotal, and the\n");
-    std::printf("         flag never appears. Same reason, same state. No buildlist query\n");
-    std::printf("         is offered by this module: whether it reaches the UI as a\n");
-    std::printf("         snapshot field or a query is stated nowhere, and inventing one\n");
-    std::printf("         here would pre-empt a Director ruling.\n");
+    std::printf("         flag never appears. Same reason, same state. The buildlist\n");
+    std::printf("         QUERY now EXISTS -- uiBuildOptions, ruled 2026-08-20, gated\n");
+    std::printf("         above as GATE-BUILDLIST -- so what this ID still lacks is the\n");
+    std::printf("         WIDGET that binds to it, not a shape. Row 8 does not flip.\n");
     std::printf("\n");
     std::printf("NOTE     The gap this suite filed at 7c36303 -- that no written invariant\n");
     std::printf("         asserted the snapshot mirrors the rules modules at all, while\n");
