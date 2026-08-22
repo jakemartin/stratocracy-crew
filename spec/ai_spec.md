@@ -144,6 +144,30 @@ anyone writes it.
    as it does today and the side accrues Fame until a casualty frees the cap or
    the dearer unit becomes affordable.
 
+   **NARROWED 2026-08-22 by the Director, and the sentence above is WRONG AS
+   WRITTEN from this ruling forward.** *"A side may not have more than N units of
+   a type on the board at once"* says **a side** — every side, the human included
+   — and that is not what the cap is. The cap is **AI policy**: it constrains what
+   `chooseBuild` will build, not what any side may have on the board. Read the
+   ruling above as: **the AI does not build a type of which its own side already
+   holds N on the board**, and read "the side accrues Fame" as the AI's side.
+
+   The occasion for the narrowing was `ui_spec.md`'s change request 1, whose
+   question (c) asked whether `uiBuildOptions` — the §2.11.5 production menu's
+   query — must report an at-cap type as unavailable to the PLAYER. It must not.
+   A player is bound by no cap, so the menu offers all four rows whatever the
+   board holds, and this module's cap never reaches it.
+
+   Nothing else here moves. The cap is still ruled and still unimplemented (no
+   `cap` symbol in `cpp_reference/`), so this narrows wording before there is code
+   to match it rather than after. The saving behaviour, the determinism argument,
+   Q9 and the no-cheating argument below are all about `chooseBuild`'s own
+   eligibility filter and are unaffected by whose rule it is. **Whoever implements
+   the cap must gate it inside the AI's build choice and nowhere that a player
+   command passes through** — a cap enforced in a shared command path would bind
+   the player through the back door and contradict this ruling while matching the
+   original sentence.
+
    It costs this module less than it looks. **The saving behaviour needs no
    code** — `nextCommand`'s economy block already reads `if (defIndex < 0)
    continue;`, so an empty eligible set is a turn that spends nothing; hoarding

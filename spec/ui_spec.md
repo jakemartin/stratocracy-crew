@@ -278,6 +278,55 @@ is in item 2 below.]
 
    **Three things the ruling does not settle, worst first.**
 
+   **ALL THREE RULED 2026-08-22 by the Director.** The three questions below are
+   left exactly as filed — they are what was asked, and the reasoning they carry
+   is still the reasoning. Each now has an answer, recorded here so it is not
+   re-litigated and so the implementer does not have to guess.
+
+   - **(a) RULED: all four rows, each carrying `costFame` and a module-computed
+     `affordable`.** As recommended. The `T-UI-03` argument decides it: an
+     affordable-only list forces the production menu to decide affordability for
+     the omitted rows itself — the exact arithmetic `T-UI-03` forbids — and to
+     invent those rows besides.
+
+   - **(b) RULED, and this RULES Q31: a player MAY queue a build into a boxed-in
+     factory.** `buildWaiting` holds the build until a spawn hex frees, which is
+     the mechanism the AI path already uses; the player gets that same mechanism
+     rather than a second one. Three consequences for `uiBuildOptions`, stated
+     because each is a decision an implementer would otherwise make alone.
+     `spawnBlocked` does **not** make an option unavailable — it is informational
+     for the menu, and the query must not fold it into availability. The query
+     stays **per-factory**: `factoryHex` remains in the signature, since the
+     dodge that removed it is no longer needed. And `hasBuiltThisTurn` and
+     `buildWaiting` **do** still gate — a factory that has already built this
+     turn, or that already holds a waiting build, offers no new option.
+     **`UiFactoryView::spawnBlocked`'s comment in `Ui.h` records Q31 as unruled;
+     it must be corrected in the same commit that adds the query,** alongside the
+     "Both DELEGATE" comment the note below already flags.
+
+   - **(c) RULED: the per-type population cap is AI POLICY, and `uiBuildOptions`
+     must NOT reflect it.** The player is not bound by it, so the query never
+     reports a type unavailable for being at cap.
+
+     **This ruling CONTRADICTS the wording of the ruling it refers to, and fixing
+     that is required by this one rather than implied by it.** `ai_spec.md`'s
+     change request 3, ruled 2026-08-19 at `85995b8`, reads *"**a side** may not
+     have more than N units of a type on the board at once"* — a side, not the
+     AI — and the sentences under it describe board state and Fame accrual for
+     "the side". Under this ruling that wording is wrong as written: it must be
+     reworded to bind **the AI's build choice** rather than any side's board
+     state. **Until it is reworded the two specs disagree**, and an implementer
+     reading `ai_spec.md` alone would still cap the player — which is precisely
+     the "two implementers each guess, differently" failure this question was
+     filed to prevent. The cap is ruled and still unimplemented (no `cap` symbol
+     in `cpp_reference/`), so the reword costs nothing but must not be skipped.
+
+   **What these rulings do NOT settle, and it is deliberate.** The exact
+   signature and field names remain the implementer's, as the shape sketch below
+   already says. Nothing here is a source change: `Ui.h` still carries its
+   refusal, and it stays correct until the query is actually written.
+
+
    - **(a) Affordable-only, or all four rows with an affordability flag?** This
      one bites hardest and has a recommendation. `T-UI-03` forbids widget-side
      arithmetic. If this query returns only the rows the side can afford, then a
