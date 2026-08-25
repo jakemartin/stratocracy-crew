@@ -16,6 +16,25 @@ namespace strat {
 // ---------------------------------------------------------------------------
 // lookups
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// §2.8's result, whole — the projection `UiMatchView` loses
+//
+// FOUR ASSIGNMENTS AND NO ARITHMETIC. If this function ever computes anything it is
+// wrong: `Turn.h` owns every one of these values and `endTurn`/`checkImmediate`/
+// `beginTurn` are the only things that decide them. The one judgement here is the
+// null guard, and it defers rather than inventing an answer.
+// ---------------------------------------------------------------------------
+UiMatchResult uiMatchResult(const UiWorld& w) {
+    UiMatchResult out;
+    if (w.turn == nullptr) return out;   // no turn state: no match to report on
+    const MatchResult& r = w.turn->result;
+    out.tier         = r.tier;
+    out.cause        = r.cause;
+    out.winner       = r.winner;
+    out.decidedByKey = r.decidedByKey;
+    return out;
+}
+
 const UiUnit* findUiUnit(const UiWorld& w, int unitId) {
     for (const UiUnit& u : w.units)
         if (u.id == unitId) return &u;

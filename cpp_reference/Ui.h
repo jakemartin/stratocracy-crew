@@ -4,7 +4,8 @@
 // This module owns NO RULES and NO BOARD. It is the contract for how every widget
 // is fed: widgets bind to the view-model snapshot below plus the §4.9 event list,
 // and hold no rules state (§4.1). Every value here is produced by the module that
-// already owns it. Two of the three queries DELEGATE outright; `uiBuildOptions`
+// already owns it. Two of the four queries DELEGATE outright; `uiMatchResult` MIRRORS
+// a struct Turn.h already holds; `uiBuildOptions`
 // COMPUTES, because no module owns "what can this side afford at this factory" -- and
 // it still owns no rule, since every gate it reports is READ from the module that
 // holds it. See the Queries block below. A number this module computed for
@@ -326,7 +327,7 @@ int standingIncomeRate(const EconomyState& e, const std::vector<TerrainDef>& ter
 bool spawnHexesBlocked(const UiWorld& w, const Hex& factoryHex);
 
 // ---------------------------------------------------------------------------
-// Queries (§4.7 Stub 8). THREE, and they are NOT all the same kind.
+// Queries (§4.7 Stub 8). FOUR, and they are NOT all the same kind.
 //
 // `uiReachable` and `uiForecast` DELEGATE: each forwards to the module that owns the
 // answer -- Move.h::reachable, Combat.h::resolveDamage -- and chooses nothing.
@@ -344,6 +345,22 @@ bool spawnHexesBlocked(const UiWorld& w, const Hex& factoryHex);
 // ruled 2026-08-20 (a query, not a snapshot field: every snapshot field is pinned by
 // T-UI-05's enumeration and a field would move that invariant), and its three
 // residual questions ruled 2026-08-22. See spec/ui_spec.md change request 1.
+//
+// `uiMatchResult` MIRRORS, and it is here for the same reason `uiBuildOptions` is a
+// query rather than a snapshot field. It reports `TurnState::result` WHOLE. The
+// snapshot's `UiMatchView` already carries that struct's `tier` and drops its other
+// three fields, so every consumer downstream of the projection can say *Decisive*
+// and cannot say FOR WHOM -- while T-TURN-02 grades a flag kill "Decisive win for the
+// KILLER" and T-TURN-04 decides a capped match on a NAMED criterion. Neither second
+// half is assertable outside this module today.
+//
+// WHY NOT A SNAPSHOT FIELD, stated because it is the same trade ruled on 2026-08-20
+// and the reasoning transfers unchanged: every snapshot field is pinned by T-UI-05's
+// enumeration, so a `winner` there would move `kUiSnapshotFieldCount`,
+// `kUiMirrorFieldCount`, `kUiDerivedFieldCount`, the transcribed `uiFieldContract()`
+// table and `uiEnumerateSnapshot`, and every consumer of the snapshot would carry
+// that move -- to hold a thing only the end-of-match screen (§2.11.4) reads. A fourth
+// `ui*` query costs none of it.
 // ---------------------------------------------------------------------------
 
 // T-UI-02. Exactly Move.h::reachable's set for that unit -- hex for hex, cost for
@@ -418,6 +435,30 @@ struct UiBuildOption {
 // no unit table, which is a missing input rather than an empty answer.
 std::vector<UiBuildOption>
 uiBuildOptions(const UiWorld& w, int side, const Hex& factoryHex);
+
+// §2.8's result, WHOLE. EVERY FIELD IS A MIRROR of `TurnState::result` -- nothing
+// here is derived and no value is computed, so this query adds no invariant of its
+// own. What it removes is a projection loss.
+struct UiMatchResult {
+    ResultTier  tier         = ResultTier::InProgress;
+    ResultCause cause        = ResultCause::None;
+    // MIRRORS `MatchResult::winner`, including its own convention: SIDE_NONE on a
+    // draw AND while in progress. NOT `sideToMove`, which agrees with the winner on
+    // a flag kill only because the killer was the side to move, and disagrees at the
+    // cap, where the match ends at a turn boundary. A caller deriving one from the
+    // other would be right in the common case and silently wrong at the cap.
+    int         winner       = SIDE_NONE;
+    // MIRRORS `MatchResult::decidedByKey`: 1/2/3 name the §2.8 criterion that
+    // differed, 0 means no tiebreak was evaluated.
+    int         decidedByKey = 0;
+};
+
+// A world with no `turn` reports the default -- InProgress, SIDE_NONE. That is a
+// MISSING INPUT rather than an in-progress match, and the two are deliberately
+// spelled the same way, because the only safe thing a caller can do with either is
+// the same thing: treat the match as having no result yet. `uiBuildOptions` makes
+// the same trade with its empty vector and says so at its own declaration.
+UiMatchResult uiMatchResult(const UiWorld& w);
 
 const UiUnit*     findUiUnit(const UiWorld& w, int unitId);
 const UiUnitView* findUiUnitView(const UiSnapshot& s, int unitId);

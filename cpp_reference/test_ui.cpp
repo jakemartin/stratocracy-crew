@@ -901,6 +901,136 @@ int main(int argc, char** argv) {
     }
 
     // -----------------------------------------------------------------------
+    // GATE-MATCHRESULT -- the result the snapshot's `match` block cannot carry.
+    //
+    // WHY THIS GATE EXISTS. `UiMatchView` mirrors `MatchResult::tier` and drops
+    // `cause`, `winner` and `decidedByKey`. So every consumer downstream of the
+    // projection can report *Decisive* and cannot report FOR WHOM -- while T-TURN-02
+    // grades a flag kill "Decisive win for the KILLER" and T-TURN-04 decides a capped
+    // match on a NAMED criterion. `uiMatchResult` carries all four.
+    //
+    // EVERY EXPECTATION HERE IS THE TURN MODULE'S OWN RETURN VALUE, never a literal.
+    // `checkImmediate` and `endTurn` each return the `MatchResult` they recorded, so
+    // this suite compares the query against that struct field for field. Comparing it
+    // against a typed `1` would assert that someone typed the same number twice.
+    // -----------------------------------------------------------------------
+    std::printf("\n-- GATE-MATCHRESULT  who won, and by what (SEC 2.8) ------------------\n");
+    {
+        std::string terr;
+
+        // -- (a) a flag kill, graded by the module -----------------------------
+        //
+        // THE FIXTURE IS BUILT SO THAT THE WINNER IS NOT THE SIDE TO MOVE. Side 0 is
+        // active and side 0's flag is the one that falls, so the killer -- and the
+        // winner -- is side 1. That inequality is the whole point of the gate: it is
+        // the one arrangement under which a consumer that had quietly derived the
+        // winner from `sideToMove` gives a DIFFERENT answer, and every check below
+        // would pass against that wrong derivation without it.
+        TurnState t;
+        initMatch(t, 0, 20, terr);
+        BoardSnapshot b;
+        b.factoryTotal = 1;
+        b.side[0].flagAlive = false;      // side 0's flag is down
+        b.side[1].flagAlive = true;
+        const MatchResult mr = checkImmediate(t, b);
+
+        // `buildUiSnapshot` returns a DEFAULT snapshot when `economy` is null, so
+        // check (b) below would compare against an empty struct and fail for a
+        // reason having nothing to do with the result. `uiMatchResult` needs only
+        // `turn`; the snapshot needs both, and this fixture feeds the snapshot.
+        EconomyState econ;
+        initSide(econ, 0, 0);
+        initSide(econ, 1, 0);
+
+        UiWorld w;
+        w.board    = buildBoard(w.units);
+        w.unitDefs = &units;
+        w.terrain  = &terrain;
+        w.economy  = &econ;
+        w.turn     = &t;
+
+        const UiMatchResult q  = uiMatchResult(w);
+        const UiSnapshot    sn = buildUiSnapshot(w);
+
+        check("GATE-MATCHRESULT (pre) the fixture discriminates: the module's winner "
+              "is NOT the side to move, so deriving one from the other would differ",
+              mr.winner != t.activeSide && mr.winner != SIDE_NONE);
+        whyInt("module winner", mr.winner);
+        whyInt("sideToMove", t.activeSide);
+
+        check("GATE-MATCHRESULT (a) all four fields mirror the MatchResult the turn "
+              "module itself returned",
+              q.tier == mr.tier && q.cause == mr.cause &&
+              q.winner == mr.winner && q.decidedByKey == mr.decidedByKey);
+        why(tierName(q.tier));
+        why(causeName(q.cause));
+
+        check("GATE-MATCHRESULT (b) the snapshot agrees on the TIER and is silent on "
+              "the winner -- the projection loss this query exists to close",
+              sn.match.hasResult && sn.match.resultTier == q.tier &&
+              sn.match.sideToMove != q.winner);
+
+        // -- (c) a mutual-passivity draw at the cap ----------------------------
+        //
+        // Driven to the cap through `endTurn` rather than by calling `resolveAtCap`,
+        // because it is `TurnState::result` this query reads and only the turn loop
+        // writes it. cap = 1 makes the opening round the last one.
+        TurnState d;
+        initMatch(d, 0, 1, terr);
+        BoardSnapshot db;
+        db.factoryTotal = 1;
+        db.side[0].fameCombat = 0;        // both silent: the passivity guard bites
+        db.side[1].fameCombat = 0;
+        // `beginTurn` leaves the phase at StartOfTurn; `applyStartOfTurnRepair` is
+        // what advances it to Actions, and `endTurn` resolves only from there. The
+        // first draft of this fixture called `beginTurn` alone, never reached the
+        // cap, and check (c) below is what caught it -- see the note on that check.
+        const std::vector<RepairSubject> noSubjects;
+        beginTurn(d, db);
+        applyStartOfTurnRepair(d, noSubjects);
+        endTurn(d, db);
+        beginTurn(d, db);
+        applyStartOfTurnRepair(d, noSubjects);
+        const MatchResult dr = endTurn(d, db);
+
+        UiWorld dw;
+        dw.board    = buildBoard(dw.units);
+        dw.unitDefs = &units;
+        dw.terrain  = &terrain;
+        dw.turn     = &d;
+        const UiMatchResult dq = uiMatchResult(dw);
+
+        // THIS CHECK HAS ALREADY EARNED ITS PLACE. On the first run of this gate it
+        // FAILED while (d) below PASSED -- the fixture never reached the cap, so both
+        // sides of (d) were the same InProgress/SIDE_NONE default and (d) was
+        // comparing a blank against a blank. A mirror check whose subject was never
+        // switched on is a check measuring its fixture.
+        check("GATE-MATCHRESULT (c) the draw fixture actually reached a result -- "
+              "without this the mirror check below passes on an in-progress default",
+              dr.tier != ResultTier::InProgress);
+
+        check("GATE-MATCHRESULT (d) a draw reports SIDE_NONE and mirrors the module's "
+              "own cause and key, with no side invented for it",
+              dq.tier == dr.tier && dq.cause == dr.cause &&
+              dq.winner == dr.winner && dq.winner == SIDE_NONE &&
+              dq.decidedByKey == dr.decidedByKey);
+        why(tierName(dq.tier));
+        why(causeName(dq.cause));
+
+        // -- (e) a missing input defers rather than inventing -------------------
+        UiWorld nw;
+        nw.board    = buildBoard(nw.units);
+        nw.unitDefs = &units;
+        nw.terrain  = &terrain;
+        nw.turn     = nullptr;
+        const UiMatchResult nq = uiMatchResult(nw);
+        check("GATE-MATCHRESULT (e) a world with no turn state reports InProgress and "
+              "SIDE_NONE rather than grading a match it cannot see",
+              nq.tier == ResultTier::InProgress && nq.cause == ResultCause::None &&
+              nq.winner == SIDE_NONE && nq.decidedByKey == 0);
+    }
+
+    // -----------------------------------------------------------------------
     std::printf("\n");
     std::printf("NOT RUN  T-UI-03 -- the live standings scoreboard binds 1:1 to snapshot\n");
     std::printf("         fields with no widget-side arithmetic. In-editor Unreal\n");

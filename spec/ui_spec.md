@@ -116,11 +116,27 @@ std::vector<strat::ReachEntry>
                    strat::uiReachable(const UiWorld&, int unitId);
 strat::UiForecast  strat::uiForecast(const UiWorld&, int attackerId,
                                      const Hex& defenderHex);
+std::vector<strat::UiBuildOption>
+                   strat::uiBuildOptions(const UiWorld&, int side,
+                                         const Hex& factoryHex);
+strat::UiMatchResult
+                   strat::uiMatchResult(const UiWorld&);
 ```
 
 `UiWorld` is the caller's bundle of the module states this row reads — the
 `Board`, the unit list, `EconomyState`, `TurnState` and the two loaded tables.
 It is an **input**, not state this module owns.
+
+**[SUPERSEDED 2026-08-24. The paragraph below is kept ENTIRE and unedited because
+its RULE is still right and only its COUNT and its example are spent — and because
+`cae01e3` corrected four comments carrying this same refusal in `Ui.h` and left this
+one standing, which is how a refusal outlives the thing it refused.** There are now
+FOUR queries. `uiBuildOptions` is the third, ruled 2026-08-20 with its three residual
+questions ruled 2026-08-22 (change request 1 below), so the specific example this
+paragraph reasons about — T-UI-04's buildlist — is exactly the thing that WAS filed
+and WAS ruled, which is the paragraph working rather than failing. `uiMatchResult` is
+the fourth, added 2026-08-24 under change request 3 below. **What still binds is the
+instruction, not the number: file a change request rather than choosing a shape.**]**
 
 **Add no third query.** T-UI-04 names a buildlist "derived from the four Stub-2
 unit rows plus current fameTotal", but whether that reaches the UI as a snapshot
@@ -224,6 +240,10 @@ the `help` body, the file-header comment and `README.md` in one pass.
 row, and flips nothing.
 
 ## Change requests for the Director
+
+**[STAMPED 2026-08-24 -- THERE ARE NOW THREE.** The third is below and it is the
+first kind rather than the second: not a question, but a shape recorded so the work
+has a home. The paragraph below is kept because it was true when written.]**
 
 There are two, and they are different in kind. The first is not a question:
 T-UI-04's buildlist shape has been ruled, and it is recorded here so the work has
@@ -494,6 +514,43 @@ is in item 2 below.]
    Full investigation, including the family enumeration and the verbatim
    `T-UI-02` comparison:
    `Stratocracy/Tools/architect/evidence/upstream-onboarding-input-gating-acceptance-id.md`.
+
+
+3. **§2.8's RESULT reaches the UI WHOLE, as a fourth query. 2026-08-24; this one
+   wants building, not deciding, and the deciding was already done in `Turn.h`.**
+
+   **The defect.** `MatchResult` carries `tier`, `cause`, `winner` and
+   `decidedByKey` and lives on `TurnState`. `UiMatchView` -- the only match block
+   the snapshot has -- carries `turn`, `turnCap`, `sideToMove`, `hasResult` and
+   `resultTier`, and **no winning side**. So every consumer downstream of the
+   projection can report *Decisive* and cannot report FOR WHOM. `T-TURN-02` grades
+   a flag kill "Decisive win for the KILLER" and `T-TURN-04` decides a capped match
+   on a NAMED criterion; neither second half was assertable outside this module.
+
+   **`sideToMove` is not a stand-in, and this is the trap worth naming.** It equals
+   the winner on a flag kill -- because the killer was the side to move -- and
+   disagrees at the cap, where the match ends at a turn boundary. A consumer that
+   derived one from the other would be right in the common case and silently wrong
+   exactly where §2.8's tiebreak is doing the deciding. `GATE-MATCHRESULT` is built
+   on a fixture where the two DIFFER, for that reason and no other.
+
+   **A QUERY, NOT A SNAPSHOT FIELD, on the 2026-08-20 precedent applied unchanged.**
+   Every snapshot field is pinned by T-UI-05's enumeration, so a `winner` there would
+   move `kUiSnapshotFieldCount`, `kUiMirrorFieldCount`, `kUiDerivedFieldCount`, the
+   transcribed `uiFieldContract()` table and `uiEnumerateSnapshot`, and every
+   consumer of the snapshot would carry that move -- to hold a thing only §2.11.4's
+   end-of-match screen reads. That is the same trade change request 1 was ruled on,
+   and the reasoning transfers without amendment.
+
+   **It adds no invariant.** All four fields are MIRRORS of `TurnState::result`;
+   nothing is derived and nothing is computed. No acceptance ID is minted -- the
+   headless gate is `GATE-MATCHRESULT`, which flips no ledger row, and what it
+   makes possible downstream is `T-TURN-02`'s and `T-TURN-04`'s second halves being
+   assertable in the editor pass for the first time.
+
+   **What it does NOT do.** It does not build §2.11.4's screen, and it does not
+   settle the faction-voiced result line that screen specifies. It removes the
+   projection loss that made the screen unbuildable; the screen is §2.11's lane.
 
 
 ## Acceptance
