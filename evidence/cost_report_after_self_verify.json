@@ -1,0 +1,105 @@
+{
+  "label": "AFTER - self-verifying Systems Engineer (b21504e architecture, current)",
+  "model": "claude-sonnet-5",
+  "measured_at": "2026-09-01T03:53:21+00:00",
+  "rates_usd_per_million": {
+    "input": 2.0,
+    "output": 10.0,
+    "cache_read": 0.2,
+    "cache_write": 2.5
+  },
+  "steps": [
+    {
+      "uncached_input_tokens": 0,
+      "cache_read_tokens": 1694,
+      "cache_write_tokens": 6164,
+      "output_tokens": 1393,
+      "successful_requests": 3,
+      "priced": true,
+      "cost_usd": {
+        "uncached_input": 0.0,
+        "cache_read": 0.000339,
+        "cache_write": 0.01541,
+        "output": 0.01393,
+        "total": 0.029679
+      },
+      "step": "Systems Engineer",
+      "usage_source": "llm",
+      "raw_usage": {
+        "total_tokens": 3087,
+        "prompt_tokens": 1694,
+        "cached_prompt_tokens": 12328,
+        "completion_tokens": 1393,
+        "reasoning_tokens": 0,
+        "cache_creation_tokens": 6164,
+        "successful_requests": 3
+      }
+    },
+    {
+      "uncached_input_tokens": 448,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 1749,
+      "output_tokens": 761,
+      "successful_requests": 2,
+      "priced": true,
+      "cost_usd": {
+        "uncached_input": 0.000896,
+        "cache_read": 0.0,
+        "cache_write": 0.004372,
+        "output": 0.00761,
+        "total": 0.012878
+      },
+      "step": "Test Engineer",
+      "usage_source": "llm",
+      "raw_usage": {
+        "total_tokens": 1209,
+        "prompt_tokens": 448,
+        "cached_prompt_tokens": 1749,
+        "completion_tokens": 761,
+        "reasoning_tokens": 0,
+        "cache_creation_tokens": 1749,
+        "successful_requests": 2
+      }
+    },
+    {
+      "uncached_input_tokens": 411,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 1551,
+      "output_tokens": 2030,
+      "successful_requests": 2,
+      "priced": true,
+      "cost_usd": {
+        "uncached_input": 0.000822,
+        "cache_read": 0.0,
+        "cache_write": 0.003878,
+        "output": 0.0203,
+        "total": 0.025
+      },
+      "step": "Balance Analyst",
+      "usage_source": "llm",
+      "raw_usage": {
+        "total_tokens": 2441,
+        "prompt_tokens": 411,
+        "cached_prompt_tokens": 1551,
+        "completion_tokens": 2030,
+        "reasoning_tokens": 0,
+        "cache_creation_tokens": 1551,
+        "successful_requests": 2
+      }
+    }
+  ],
+  "totals": {
+    "uncached_input_tokens": 859,
+    "cache_read_tokens": 1694,
+    "cache_write_tokens": 9464,
+    "output_tokens": 4184,
+    "successful_requests": 7,
+    "cost_usd": 0.067557,
+    "all_steps_priced": true
+  },
+  "most_expensive_step": "Systems Engineer",
+  "usage_sources": [
+    "llm"
+  ],
+  "unmeasured": []
+}

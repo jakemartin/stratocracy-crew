@@ -21,6 +21,32 @@ ADDENDUM_PATH = Path(__file__).resolve().parent.parent / "spec" / "combat_spec_a
 # Workhorse model per GDD §4.6 (Sonnet 5). Override with STRATOCRACY_CREW_MODEL.
 DEFAULT_MODEL = os.environ.get("STRATOCRACY_CREW_MODEL", "anthropic/claude-sonnet-5")
 
+# Which repair architecture the Systems Engineer uses. Two real configurations from this
+# repo's own history, kept switchable so the cost difference between them is measurable
+# on demand rather than asserted (Assignment #10, D3 before/after).
+#
+#   legacy       -- 30d0fe3. The SE authors only. It holds write_combat_impl and nothing
+#                   else, so a failing invariant has to cross an agent boundary: the Test
+#                   Engineer runs the gate, narrates the failure, and hands it back. Every
+#                   hop re-establishes context in a different agent.
+#   self-verify  -- b21504e (current). The SE also holds run_test_gate and closes the loop
+#                   itself, iterating until GATE PASS. The Test Engineer still certifies
+#                   independently, so the release authority is unchanged -- what moved is
+#                   only WHERE the repair iterations happen.
+#
+# The spec, the gate, the invariant count and the model are identical either way. That is
+# the point: it isolates the architecture as the single variable. Running the literal
+# 30d0fe3 commit instead would also swap an 8-invariant spec for a 17-invariant one and
+# confound the scope change with the architecture change.
+ARCHITECTURE = os.environ.get("STRATOCRACY_CREW_ARCH", "self-verify").strip().lower()
+_VALID_ARCH = ("self-verify", "legacy")
+if ARCHITECTURE not in _VALID_ARCH:
+    raise ValueError(
+        f"STRATOCRACY_CREW_ARCH={ARCHITECTURE!r} is not one of {_VALID_ARCH}. "
+        "A typo must not silently fall back to the default -- that would label a "
+        "self-verify run as legacy in the cost comparison."
+    )
+
 
 def build_llm() -> LLM:
     # max_tokens is required for Anthropic models in CrewAI. Sonnet 5 (and the
@@ -38,26 +64,59 @@ def read_spec() -> str:
 
 
 def build_agents(llm: LLM | None = None):
+    """Build the three roles.
+
+    ONE LLM INSTANCE PER AGENT when `llm` is not supplied. CrewAI accumulates token
+    usage on the LLM object (`BaseLLM._token_usage`, read back by
+    `get_token_usage_summary()`), not on the agent -- so a single LLM shared by three
+    agents makes per-agent cost unattributable, and it makes CrewAI's own
+    `Crew.calculate_usage_metrics()` add THE SAME running total once per agent, which
+    reports roughly 3x the real spend. Separate instances fix both.
+    Measured 2026-08-31: a shared instance reported 0 tokens against every agent's
+    `_token_process` while the run really did call the API, which is what surfaced this.
+
+    Passing an explicit `llm` keeps the old shared-instance behaviour for any caller
+    that wants it, and accepts the attribution loss that comes with it.
+    """
+    shared = llm is not None
     llm = llm or build_llm()
 
-    systems_engineer = Agent(
-        role="Systems Engineer",
-        goal=(
+    if ARCHITECTURE == "self-verify":
+        se_goal = (
             "Author the headless C++ combat module for Stratocracy strictly from the "
             "Director's spec and write it with write_combat_impl. Then VERIFY YOUR OWN "
             "WORK: call run_test_gate to compile and run the tests; if it reports a compile "
             "error or any failing invariant, read the message, fix build/Combat.cpp, and "
             "re-run the gate. Iterate until it reports GATE PASS (all of T-COMBAT-01..10, T-REPAIR-01..07). "
             "Only finish once the gate passes. Implement ONLY what the spec defines."
-        ),
-        backstory=(
+        )
+        se_backstory = (
             "A disciplined engine programmer who treats the spec as a contract and never "
             "hands off code that doesn't compile. Writes deterministic, dependency-free "
             "C++17 (no Unreal, no third-party libs) and leans on the real compiler + tests "
             "as the feedback loop, not on eyeballing."
-        ),
-        tools=[write_combat_impl, run_test_gate],
-        llm=llm,
+        )
+        se_tools = [write_combat_impl, run_test_gate]
+    else:  # legacy -- 30d0fe3's cross-agent repair loop, verbatim
+        se_goal = (
+            "Author the headless C++ combat module for Stratocracy strictly from the "
+            "Director's spec, then write it to build/Combat.cpp with the write_combat_impl "
+            "tool. If the Test Engineer reports a failing invariant, correct the code and "
+            "re-write it. Implement ONLY what the spec defines — no invented rules."
+        )
+        se_backstory = (
+            "A disciplined engine programmer who treats the spec as a contract. Writes "
+            "deterministic, dependency-free C++17 (no Unreal, no third-party libs) so the "
+            "rules can be tested in seconds without launching the editor."
+        )
+        se_tools = [write_combat_impl]
+
+    systems_engineer = Agent(
+        role="Systems Engineer",
+        goal=se_goal,
+        backstory=se_backstory,
+        tools=se_tools,
+        llm=llm if shared else build_llm(),
         allow_delegation=False,
         max_iter=12,
         verbose=True,
@@ -78,8 +137,15 @@ def build_agents(llm: LLM | None = None):
             "compiler and the assertions, not prose; knows the classic hallucination (letting "
             "Artillery counter at range 1) and relies on T-COMBAT-07 to catch it."
         ),
-        tools=[certify_build],
-        llm=llm,
+        # Legacy also hands the gate itself to the Test Engineer (30d0fe3), because in that
+        # architecture the SE cannot run it -- a failing invariant only becomes visible
+        # here, and the repair narration crosses the task boundary carrying the SE's whole
+        # output as `context`. certify_build stays in BOTH configurations: it writes
+        # build/acceptance.json, which the Balance Analyst and the week-1 stage require, so
+        # dropping it in legacy would change what the pipeline produces and not just what
+        # it costs.
+        tools=[certify_build] if ARCHITECTURE == "self-verify" else [run_test_gate, certify_build],
+        llm=llm if shared else build_llm(),
         allow_delegation=False,
         verbose=True,
     )
@@ -97,7 +163,7 @@ def build_agents(llm: LLM | None = None):
             "unit such as Artillery, whose whole point is standoff."
         ),
         tools=[run_self_play],
-        llm=llm,
+        llm=llm if shared else build_llm(),
         allow_delegation=False,
         verbose=True,
     )

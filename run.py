@@ -175,6 +175,32 @@ def run_live() -> None:
 
     log("\n=== Final crew narrative (Balance Analyst) ===\n" + str(result))
 
+    # Cost, measured off the run that just happened (Assignment #10, D3). Read from the
+    # per-agent TokenProcess CrewAI filled during kickoff, so this prices THIS run and
+    # nothing else. A failure here must not lose a completed crew run, so it is caught:
+    # the gate verdict and the authored source above are the expensive artefacts.
+    try:
+        from crew import usage as usage_mod
+        from crew.agents import DEFAULT_MODEL
+
+        label = os.environ.get("STRATOCRACY_COST_LABEL", "live crew run")
+        stem = os.environ.get("STRATOCRACY_COST_STEM", "cost_report")
+        report = usage_mod.collect(crew, DEFAULT_MODEL, label)
+        # evidence/, not build/: build/ is gitignored and is overwritten by the next run,
+        # so a cost report written there would never reach a clone and could not be the
+        # measured figure the assignment asks a grader to check. Same reasoning that put
+        # evidence/live_run.md where it is.
+        json_path, md_path = usage_mod.write_report(
+            report, Path(__file__).resolve().parent / "evidence", stem)
+
+        log("\n=== Measured cost for this run ===")
+        for line in usage_mod.render_markdown(report).splitlines():
+            log("    " + line)
+        log(f"    -> {json_path.name}, {md_path.name}")
+    except Exception as exc:  # noqa: BLE001 -- see comment above
+        log(f"\n[warn] cost measurement failed: {exc!r}")
+        log("       The crew run itself stands; only the cost report is missing.")
+
     run_week1_stage()
 
 

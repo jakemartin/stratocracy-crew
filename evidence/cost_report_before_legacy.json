@@ -1,0 +1,106 @@
+{
+  "label": "BEFORE - cross-agent repair loop (30d0fe3 architecture)",
+  "model": "claude-sonnet-5",
+  "measured_at": "2026-09-01T03:48:04+00:00",
+  "rates_usd_per_million": {
+    "input": 2.0,
+    "output": 10.0,
+    "cache_read": 0.2,
+    "cache_write": 2.5
+  },
+  "steps": [
+    {
+      "uncached_input_tokens": 1205,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 5891,
+      "output_tokens": 3791,
+      "successful_requests": 2,
+      "priced": true,
+      "cost_usd": {
+        "uncached_input": 0.00241,
+        "cache_read": 0.0,
+        "cache_write": 0.014728,
+        "output": 0.03791,
+        "total": 0.055047
+      },
+      "step": "Systems Engineer",
+      "usage_source": "llm",
+      "raw_usage": {
+        "total_tokens": 4996,
+        "prompt_tokens": 1205,
+        "cached_prompt_tokens": 5891,
+        "completion_tokens": 3791,
+        "reasoning_tokens": 0,
+        "cache_creation_tokens": 5891,
+        "successful_requests": 2
+      }
+    },
+    {
+      "uncached_input_tokens": 448,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 3219,
+      "output_tokens": 896,
+      "successful_requests": 2,
+      "priced": true,
+      "cost_usd": {
+        "uncached_input": 0.000896,
+        "cache_read": 0.0,
+        "cache_write": 0.008048,
+        "output": 0.00896,
+        "total": 0.017903
+      },
+      "step": "Test Engineer",
+      "usage_source": "llm",
+      "raw_usage": {
+        "total_tokens": 1344,
+        "prompt_tokens": 448,
+        "cached_prompt_tokens": 3219,
+        "completion_tokens": 896,
+        "reasoning_tokens": 0,
+        "cache_creation_tokens": 3219,
+        "successful_requests": 2
+      }
+    },
+    {
+      "uncached_input_tokens": 411,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 1691,
+      "output_tokens": 2024,
+      "successful_requests": 2,
+      "priced": true,
+      "cost_usd": {
+        "uncached_input": 0.000822,
+        "cache_read": 0.0,
+        "cache_write": 0.004228,
+        "output": 0.02024,
+        "total": 0.025289
+      },
+      "step": "Balance Analyst",
+      "usage_source": "llm",
+      "raw_usage": {
+        "total_tokens": 2435,
+        "prompt_tokens": 411,
+        "cached_prompt_tokens": 1691,
+        "completion_tokens": 2024,
+        "reasoning_tokens": 0,
+        "cache_creation_tokens": 1691,
+        "successful_requests": 2
+      }
+    }
+  ],
+  "totals": {
+    "uncached_input_tokens": 2064,
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 10801,
+    "output_tokens": 6711,
+    "successful_requests": 6,
+    "cost_usd": 0.098239,
+    "all_steps_priced": true
+  },
+  "most_expensive_step": "Systems Engineer",
+  "usage_sources": [
+    "llm"
+  ],
+  "unmeasured": [],
+  "repriced_note": "Re-priced from this run's stored raw_usage after the cached_prompt_tokens/cache_creation disambiguation. Token counts are the run's own; only their interpretation changed."
+}
