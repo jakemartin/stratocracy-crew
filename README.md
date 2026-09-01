@@ -13,7 +13,10 @@ and a self-play balance report — the exact "game-ready output" the GDD promise
 real](#why-the-gate-is-real), and [Run it](#run-it). Everything from the "§4.11 rows 1-8"
 heading onward was built *after* submission: capstone work, not assignment scope.
 Evidence of the live crew run, readable without an API key:
-[`evidence/live_run.md`](evidence/live_run.md) and [`crew_evidence.html`](crew_evidence.html).
+[`evidence/live_run.md`](evidence/live_run.md) and [`crew_evidence.html`](crew_evidence.html)
+for the July run; [`evidence/live_run_2026-08-31_self_verify.md`](evidence/live_run_2026-08-31_self_verify.md)
+for the run that produced the shipped rules, which also carries what it cost — see
+[What a run costs](#what-a-run-costs).
 
 ---
 
@@ -93,6 +96,59 @@ The type-effectiveness hook ships **neutral** (`effectiveness()` returns 1.0 for
 **T-COMBAT-09/10** pin it there — so an agent that "helpfully" invents balance numbers is blocked,
 and the pre-existing combat numbers stay byte-identical. The offline run demonstrates it end to end:
 **pass 1 blocks on T-COMBAT-07 + T-REPAIR-03, pass 2 passes 17/17.**
+
+## What a run costs
+
+A live run — spec → authored C++ → certified gate (17/17) → self-play report — measured
+**$0.067557** on `claude-sonnet-5`. That is read off the run, not estimated:
+[`crew/usage.py`](crew/usage.py) prices the token counts CrewAI accumulated during it, and
+every run writes a per-step report into `evidence/`.
+
+| | Requests | Output tokens | Cost |
+|---|---:|---:|---:|
+| Systems Engineer | 3 | 1,393 | $0.029679 |
+| Test Engineer | 2 | 761 | $0.012878 |
+| Balance Analyst | 2 | 2,030 | $0.025000 |
+| **Total** | **7** | **4,184** | **$0.067557** |
+
+Authoring and certifying the whole rules layer costs about seven cents, so cost is not a
+reason to run the crew less often.
+
+**The Systems Engineer's repair loop is worth 31% of that.** `STRATOCRACY_CREW_ARCH`
+switches between the two architectures this repo has actually shipped:
+
+- `legacy` — the SE authors only. A failing invariant crosses an agent boundary: the Test
+  Engineer runs the gate, narrates the failure, and hands it back with the SE's whole prior
+  output as task `context`.
+- `self-verify` (default) — the SE holds `run_test_gate` and closes the loop itself. The Test
+  Engineer still certifies independently, so release authority is unchanged.
+
+Both run the same 17-invariant spec and both finish `GATE PASS 17/17, accepted=True`, so it
+compares two ways of doing identical work: **$0.098239 → $0.067557**. Output tokens carry it
+(6,711 → 4,184, −37.7%) and output bills at 5× input. The mechanism is that a repair which
+crosses an agent boundary has to be *narrated in prose* by both agents, while a repair inside
+one agent is a tool call and a tool result that nothing describes. The self-verifying SE is
+also the only step in either run to earn a real cache read, since its iterations share a
+prompt prefix that stays put.
+
+Note the request count goes *up* (6 → 7) while cost goes *down*. Requests are the wrong unit
+for this pipeline; output tokens are the one that moves the bill.
+
+```bash
+STRATOCRACY_CREW_ARCH=legacy      python run.py --online   # or run_with_msvc.bat
+STRATOCRACY_CREW_ARCH=self-verify python run.py --online
+```
+
+Full breakdown in [`evidence/cost_comparison.md`](evidence/cost_comparison.md). One run per
+configuration is one sample, not a distribution — the direction and the mechanism are the
+finding; the exact percentage is a single measurement.
+
+Two measurement traps `crew/usage.py` documents, both found by measuring rather than reading:
+CrewAI accumulates tokens on the **LLM object, not the agent**, so the single shared `LLM`
+this repo used to build made every agent report zero and would have made CrewAI's own
+`calculate_usage_metrics()` count one running total three times; and LiteLLM filled
+`cached_prompt_tokens` with the cache-**creation** figure, which read as a cache hit bills
+real uncached input at the 0.1× rate.
 
 ## §4.11 rows 1-8 (added after the Assignment-3 submission)
 
@@ -577,12 +633,19 @@ crew/tasks.py            the 3 tasks, chained spec → implement → gate → ba
 crew/crew.py             assembles the sequential Crew
 crew/tools.py            deterministic tools: write / compile+test / self-play / week-1 gate
 crew/offline.py          no-API pipeline (also demos the gate catching the hallucination)
+crew/usage.py            prices a live run from the tokens CrewAI recorded during it
 cpp_reference/           the FIXED sources — headers + test harnesses — and good/buggy impls
 run.py                   entrypoint (live if key, else offline; always produces artifacts)
+run_with_msvc.bat        run.py with cl.exe on PATH (vcvars64) — needed if MSVC is the only compiler
 build/                   generated: the authored .cpp files, acceptance records, binaries
 diagram.mmd              Mermaid architecture diagram (rendered inline above)
 evidence/live_run.md     transcript of the live CrewAI run — build/ is gitignored
 crew_evidence.html       the same run as a standalone evidence page
+evidence/live_run_2026-08-31_self_verify.md   full trail of the run that produced the shipped rules
+evidence/cost_report_after_self_verify.md     per-step cost of that run (+ .json)
+evidence/cost_report_before_legacy.md         the same run under the legacy architecture (+ .json)
+evidence/cost_comparison.md                   the two priced against each other
+evidence/integration_gate_2026-09-01.md       T-INT-01 / T-INT-04 verdict, vendored → UE
 ```
 
 **`build/` is gitignored**, so every implementation's committed home is
